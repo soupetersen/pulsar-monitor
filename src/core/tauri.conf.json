@@ -1,19 +1,19 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Widget Monitor",
-  "version": "0.1.0",
-  "identifier": "com.petersen.widgetmonitor",
+  "productName": "Pulsar",
+  "version": "0.2.0",
+  "identifier": "com.petersen.pulsar",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../build"
+    "frontendDist": "../../build"
   },
   "app": {
     "windows": [
       {
         "label": "main",
-        "title": "Widget Monitor",
+        "title": "Pulsar",
         "width": 372,
         "height": 132,
         "decorations": false,

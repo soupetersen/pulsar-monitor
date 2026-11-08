@@ -1,3 +1,4 @@
+pub mod cpu_sensor;
 mod gpu;
 mod pdh;
 mod sampler;
@@ -13,6 +14,53 @@ use tauri_plugin_window_state::StateFlags;
 
 struct TrayItems {
     on_top: CheckMenuItem<Wry>,
+    cpu_temp: CheckMenuItem<Wry>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CpuTempStatus {
+    /// AMD CPU (the only kind the sensor supports).
+    supported: bool,
+    /// PawnIO driver installed.
+    pawnio: bool,
+    /// Helper task registered.
+    enabled: bool,
+}
+
+fn cpu_temp_status_now() -> CpuTempStatus {
+    let supported = cpu_sensor::is_amd();
+    let pawnio = supported && cpu_sensor::pawnio_installed();
+    CpuTempStatus { supported, pawnio, enabled: pawnio && cpu_sensor::enabled() }
+}
+
+#[tauri::command]
+async fn cpu_temp_status() -> CpuTempStatus {
+    cpu_temp_status_now()
+}
+
+/// Enables or disables the CPU temperature helper (shows a UAC prompt).
+#[tauri::command]
+async fn set_cpu_temp(app: AppHandle, enable: bool) -> CpuTempStatus {
+    toggle_cpu_temp(&app, enable)
+}
+
+fn toggle_cpu_temp(app: &AppHandle, enable: bool) -> CpuTempStatus {
+    cpu_sensor::request_toggle(enable);
+    let status = cpu_temp_status_now();
+    let _ = app.state::<TrayItems>().cpu_temp.set_checked(status.enabled);
+    let _ = app.emit("cpu-temp-changed", status.clone());
+    status
+}
+
+/// Opens the PawnIO website (where the driver installer is) in the browser.
+#[tauri::command]
+fn open_pawnio_site() {
+    use std::os::windows::process::CommandExt;
+    let _ = std::process::Command::new("rundll32.exe")
+        .args(["url.dll,FileProtocolHandler", "https://pawnio.eu/"])
+        .creation_flags(0x0800_0000)
+        .spawn();
 }
 
 /// The UI tells the sampler what it is showing, so nothing extra is collected.
@@ -86,15 +134,31 @@ struct TrayLabels {
     toggle: &'static str,
     on_top: &'static str,
     autostart: &'static str,
+    cpu_temp: &'static str,
+    cpu_temp_needs_pawnio: &'static str,
     quit: &'static str,
 }
 
 fn tray_labels() -> TrayLabels {
     let pt = sys_locale::get_locale().is_some_and(|l| l.to_lowercase().starts_with("pt"));
     if pt {
-        TrayLabels { toggle: "Mostrar / ocultar", on_top: "Sempre no topo", autostart: "Iniciar com o Windows", quit: "Sair" }
+        TrayLabels {
+            toggle: "Mostrar / ocultar",
+            on_top: "Sempre no topo",
+            autostart: "Iniciar com o Windows",
+            cpu_temp: "Temperatura da CPU (requer admin)",
+            cpu_temp_needs_pawnio: "Temperatura da CPU (requer PawnIO)",
+            quit: "Sair",
+        }
     } else {
-        TrayLabels { toggle: "Show / hide", on_top: "Always on top", autostart: "Start with Windows", quit: "Quit" }
+        TrayLabels {
+            toggle: "Show / hide",
+            on_top: "Always on top",
+            autostart: "Start with Windows",
+            cpu_temp: "CPU temperature (needs admin)",
+            cpu_temp_needs_pawnio: "CPU temperature (needs PawnIO)",
+            quit: "Quit",
+        }
     }
 }
 
@@ -104,16 +168,31 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let on_top = CheckMenuItem::with_id(app, "on_top", labels.on_top, true, true, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", labels.autostart, true, autostart_on, None::<&str>)?;
+    // CPU temperature (AMD only): needs the PawnIO driver and a one-time UAC prompt.
+    let cpu_temp_supported = cpu_sensor::is_amd();
+    let pawnio = cpu_temp_supported && cpu_sensor::pawnio_installed();
+    let cpu_temp = CheckMenuItem::with_id(
+        app,
+        "cpu_temp",
+        if pawnio { labels.cpu_temp } else { labels.cpu_temp_needs_pawnio },
+        pawnio,
+        pawnio && cpu_sensor::enabled(),
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&show, &on_top, &autostart, &sep, &quit])?;
+    let menu = if cpu_temp_supported {
+        Menu::with_items(app, &[&show, &on_top, &autostart, &cpu_temp, &sep, &quit])?
+    } else {
+        Menu::with_items(app, &[&show, &on_top, &autostart, &sep, &quit])?
+    };
 
-    app.manage(TrayItems { on_top: on_top.clone() });
+    app.manage(TrayItems { on_top: on_top.clone(), cpu_temp: cpu_temp.clone() });
 
     let autostart_item = autostart.clone();
     TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().cloned().expect("app icon missing"))
-        .tooltip("Widget Monitor")
+        .tooltip("Pulsar")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
@@ -127,6 +206,14 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                 let enabled = launcher.is_enabled().unwrap_or(false);
                 let _ = if enabled { launcher.disable() } else { launcher.enable() };
                 let _ = autostart_item.set_checked(launcher.is_enabled().unwrap_or(false));
+            }
+            "cpu_temp" => {
+                // The UAC prompt and schtasks take a while: don't block the UI thread.
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    cpu_sensor::log("tray: CPU temperature item clicked");
+                    toggle_cpu_temp(&app, !cpu_sensor::enabled());
+                });
             }
             "quit" => app.exit(0),
             _ => {}
@@ -148,7 +235,15 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().with_state_flags(StateFlags::POSITION).build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .manage(view.clone())
-        .invoke_handler(tauri::generate_handler![set_view, hide_to_tray, is_on_top, set_on_top])
+        .invoke_handler(tauri::generate_handler![
+            set_view,
+            hide_to_tray,
+            is_on_top,
+            set_on_top,
+            cpu_temp_status,
+            set_cpu_temp,
+            open_pawnio_site
+        ])
         .setup(move |app| {
             build_tray(app)?;
             sampler::spawn(app.handle().clone(), view.clone());

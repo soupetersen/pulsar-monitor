@@ -1,6 +1,6 @@
 [package]
-name = "widgets"
-version = "0.1.0"
+name = "pulsar"
+version = "0.2.0"
 description = "System monitor desktop widget for Windows (CPU, GPU, RAM)"
 authors = ["Thiago Petersen"]
 edition = "2024"
@@ -11,7 +11,7 @@ edition = "2024"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "widgets_lib"
+name = "pulsar_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -25,10 +25,11 @@ sysinfo = "0.40.1"
 nvml-wrapper = "0.13.0"
 tauri-plugin-autostart = "2.7.0"
 tauri-plugin-window-state = "2.5.0"
-windows-sys = { version = "0.61.2", features = ["Win32_System_Performance", "Win32_Foundation"] }
+windows-sys = { version = "0.61.2", features = ["Win32_System_Performance", "Win32_Foundation", "Win32_System_Memory", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_System_Com"] }
 webview2-com = "0.39.1"
 windows-core = "0.62.2"
 sys-locale = "0.3.2"
+libloading = "0.8"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

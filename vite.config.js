@@ -25,8 +25,8 @@ export default defineConfig(() => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching the Rust side in `src/core`
+      ignored: ["**/src/core/**"],
     },
   },
 }));

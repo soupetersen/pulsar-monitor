@@ -54,6 +54,9 @@ struct CpuStats {
     name: String,
     usage: f32,
     clock_ghz: Option<f32>,
+    temp_c: Option<f32>,
+    power_w: Option<f32>,
+    threads: usize,
     cores: Vec<f32>,
 }
 
@@ -109,6 +112,8 @@ struct BaseCounters {
     query: Query,
     cpu_perf: Option<Counter>,
     cpu_freq: Option<Counter>,
+    /// CPU package power from RAPL, in mW (Windows "Energy Meter" counters).
+    cpu_power: Option<Counter>,
     disk_idle: Option<Counter>,
     disk_bytes: Option<Counter>,
 }
@@ -118,10 +123,11 @@ impl BaseCounters {
         let query = Query::new()?;
         let cpu_perf = query.add(r"\Processor Information(_Total)\% Processor Performance");
         let cpu_freq = query.add(r"\Processor Information(_Total)\Processor Frequency");
+        let cpu_power = query.add(r"\Energy Meter(rapl_package0_pkg)\Power");
         let disk_idle = query.add(r"\PhysicalDisk(_Total)\% Idle Time");
         let disk_bytes = query.add(r"\PhysicalDisk(_Total)\Disk Bytes/sec");
         query.collect();
-        Some(Self { query, cpu_perf, cpu_freq, disk_idle, disk_bytes })
+        Some(Self { query, cpu_perf, cpu_freq, cpu_power, disk_idle, disk_bytes })
     }
 }
 
@@ -207,6 +213,8 @@ fn run(app: AppHandle, view: SharedView) {
     let mut gpu_counters: Option<GpuCounters> = None;
     let mut networks = Networks::new_with_refreshed_list().ok();
     let mut last_net = Instant::now();
+    let mut temp_reader: Option<crate::cpu_sensor::Reader> = None;
+    let mut last_reader_attempt: Option<Instant> = None;
 
     let mut next = Instant::now() + TICK;
     loop {
@@ -227,6 +235,7 @@ fn run(app: AppHandle, view: SharedView) {
 
         // Effective clock = nominal frequency * % performance (matches Task Manager).
         let mut clock_ghz = None;
+        let mut cpu_power_w = None;
         let mut disk = None;
         if let Some(b) = &base {
             b.query.collect();
@@ -236,6 +245,7 @@ fn run(app: AppHandle, view: SharedView) {
             ) {
                 clock_ghz = Some((freq * perf / 100.0 / 1000.0) as f32);
             }
+            cpu_power_w = b.cpu_power.as_ref().and_then(Counter::value).map(|mw| (mw / 1000.0) as f32);
             if v.expanded
                 && let (Some(idle), Some(bytes)) = (
                     b.disk_idle.as_ref().and_then(Counter::value),
@@ -245,6 +255,13 @@ fn run(app: AppHandle, view: SharedView) {
                 disk = Some(DiskStats { active_pct: (100.0 - idle).clamp(0.0, 100.0), bytes_per_sec: bytes });
             }
         }
+
+        // CPU temperature from the elevated helper, if it is running.
+        if temp_reader.is_none() && last_reader_attempt.is_none_or(|t| t.elapsed() >= Duration::from_secs(5)) {
+            last_reader_attempt = Some(Instant::now());
+            temp_reader = crate::cpu_sensor::Reader::open();
+        }
+        let cpu_temp_c = temp_reader.as_ref().and_then(crate::cpu_sensor::Reader::temp_c);
 
         // Per-process GPU counters: only when needed.
         let want_gpu_counters = (v.expanded && v.panel == Panel::Gpu) || nv.is_none();
@@ -310,6 +327,9 @@ fn run(app: AppHandle, view: SharedView) {
                 name: cpu_name.clone(),
                 usage: sys.global_cpu_usage(),
                 clock_ghz,
+                temp_c: cpu_temp_c,
+                power_w: cpu_power_w,
+                threads: sys.cpus().len(),
                 cores: if v.expanded { sys.cpus().iter().map(|c| c.usage()).collect() } else { Vec::new() },
             },
             ram: RamStats {

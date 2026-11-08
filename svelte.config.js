@@ -12,6 +12,11 @@ const config = {
     adapter: adapter({
       fallback: "index.html",
     }),
+    // UI lives in src/ui; the Rust side (Tauri) lives in src/core.
+    files: {
+      src: "src/ui",
+      assets: "src/ui/static",
+    },
   },
 };
 

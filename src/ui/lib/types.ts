@@ -14,6 +14,12 @@ export interface Proc {
   vram: number;
 }
 
+export interface CpuTempStatus {
+  supported: boolean;
+  pawnio: boolean;
+  enabled: boolean;
+}
+
 export interface ProcRow {
   name: string;
   sub: string;
@@ -37,7 +43,15 @@ export interface GpuStats {
 export interface Stats {
   host: string;
   uptimeSecs: number;
-  cpu: { name: string; usage: number; clockGhz: number | null; cores: number[] };
+  cpu: {
+    name: string;
+    usage: number;
+    clockGhz: number | null;
+    tempC: number | null;
+    powerW: number | null;
+    threads: number;
+    cores: number[];
+  };
   ram: { used: number; total: number; available: number };
   gpu: GpuStats | null;
   net: { rxPerSec: number; txPerSec: number } | null;

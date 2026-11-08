@@ -5,7 +5,7 @@
   import { currentMonitor, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
   import Compact from "$lib/Compact.svelte";
   import Expanded from "$lib/Expanded.svelte";
-  import type { Panel, Stats, Theme } from "$lib/types";
+  import type { CpuTempStatus, Panel, Stats, Theme } from "$lib/types";
 
   const HISTORY = 30;
   const win = getCurrentWindow();
@@ -19,6 +19,24 @@
   let gpuHist = $state<number[]>([]);
   let shell: HTMLDivElement;
   let maxHeight = $state(900);
+  let tempStatus = $state<CpuTempStatus | null>(null);
+  let tempBusy = $state(false);
+  /** CPU temperature can be turned on but isn't yet: show the setup button. */
+  let tempSetup = $derived(tempStatus?.supported && !tempStatus.enabled ? tempStatus : null);
+
+  async function enableTemp() {
+    if (!tempStatus) return;
+    if (!tempStatus.pawnio) {
+      invoke("open_pawnio_site");
+      return;
+    }
+    tempBusy = true;
+    try {
+      tempStatus = await invoke<CpuTempStatus>("set_cpu_temp", { enable: true });
+    } finally {
+      tempBusy = false;
+    }
+  }
 
   function loadTheme(): Theme {
     try {
@@ -42,8 +60,10 @@
         gpuHist = push(gpuHist, e.payload.gpu?.usage ?? 0);
       }),
       listen<boolean>("on-top-changed", (e) => (onTop = e.payload)),
+      listen<CpuTempStatus>("cpu-temp-changed", (e) => (tempStatus = e.payload)),
     ];
     invoke<boolean>("is_on_top").then((v) => (onTop = v));
+    invoke<CpuTempStatus>("cpu_temp_status").then((s) => (tempStatus = s));
 
     // The window always hugs the content, so it grows/shrinks with the view.
     // Sized in physical pixels using the WebView's own pixel ratio, which can
@@ -118,9 +138,12 @@
       ontheme={() => (theme = theme === "dark" ? "light" : "dark")}
       ontop={() => invoke("set_on_top", { on: !onTop })}
       onhide={hide}
+      {tempSetup}
+      {tempBusy}
+      onenabletemp={enableTemp}
     />
   {:else}
-    <Compact {stats} onexpand={expand} onhide={hide} />
+    <Compact {stats} onexpand={expand} onhide={hide} {tempSetup} {tempBusy} onenabletemp={enableTemp} />
   {/if}
 </div>
 

@@ -2,9 +2,10 @@
   import { slide } from "svelte/transition";
   import ProcList from "./ProcList.svelte";
   import Sparkline from "./Sparkline.svelte";
-  import type { Panel, Proc, ProcRow, Stats, Theme } from "./types";
+  import type { CpuTempStatus, Panel, Proc, ProcRow, Stats, Theme } from "./types";
   import { bytes, f1, f2, GB, pct, rate, shortCpuName, uptime } from "./format";
   import { t } from "./i18n";
+  import TempSetup from "./TempSetup.svelte";
 
   let {
     stats,
@@ -17,6 +18,9 @@
     ontheme,
     ontop,
     onhide,
+    tempSetup,
+    tempBusy,
+    onenabletemp,
   }: {
     stats: Stats | null;
     cpuHist: number[];
@@ -28,6 +32,9 @@
     ontheme: () => void;
     ontop: () => void;
     onhide: () => void;
+    tempSetup: CpuTempStatus | null;
+    tempBusy: boolean;
+    onenabletemp: () => void;
   } = $props();
 
   const togglePanel = (p: Panel) => (panel = panel === p ? "none" : p);
@@ -97,22 +104,37 @@
   </header>
 
   {#if stats}
+    {@const c = stats.cpu}
     <section>
       <div class="head">
-        <span>CPU · {shortCpuName(stats.cpu.name)}</span>
-        {#if stats.cpu.clockGhz}<span>{f2(stats.cpu.clockGhz)} GHz</span>{/if}
+        <span>CPU · {shortCpuName(c.name)}</span>
       </div>
       <div class="big-row">
-        <span class="big">{pct(stats.cpu.usage)}</span>
+        <span class="big">{pct(c.usage)}</span>
         <Sparkline values={cpuHist} />
       </div>
-      {#if stats.cpu.cores.length}
+      {#if c.cores.length}
         <div class="threads" title={t.perThread}>
-          {#each stats.cpu.cores as c, i (i)}
-            <div class="thread" style:height="{Math.max(8, c)}%"></div>
+          {#each c.cores as core, i (i)}
+            <div class="thread" style:height="{Math.max(8, core)}%"></div>
           {/each}
         </div>
       {/if}
+      <div class="stats">
+        <div>
+          <span class="muted small">{t.temp}</span>
+          {#if c.tempC != null}
+            <b>{Math.round(c.tempC)}°C</b>
+          {:else if tempSetup}
+            <TempSetup status={tempSetup} busy={tempBusy} onclick={onenabletemp} label />
+          {:else}
+            <b>—</b>
+          {/if}
+        </div>
+        <div><span class="muted small">{t.power}</span><b>{c.powerW != null ? `${Math.round(c.powerW)} W` : "—"}</b></div>
+        <div><span class="muted small">Clock</span><b>{c.clockGhz ? `${f2(c.clockGhz)} GHz` : "—"}</b></div>
+        <div><span class="muted small">Threads</span><b>{c.threads}</b></div>
+      </div>
       {@render procsToggle("cpu")}
     </section>
 

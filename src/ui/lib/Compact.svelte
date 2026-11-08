@@ -1,13 +1,24 @@
 <script lang="ts">
-  import type { Panel, Stats } from "./types";
+  import type { CpuTempStatus, Panel, Stats } from "./types";
   import { f1, GB, pct } from "./format";
   import { t } from "./i18n";
+  import TempSetup from "./TempSetup.svelte";
 
   let {
     stats,
     onexpand,
     onhide,
-  }: { stats: Stats | null; onexpand: (p: Panel) => void; onhide: () => void } = $props();
+    tempSetup,
+    tempBusy,
+    onenabletemp,
+  }: {
+    stats: Stats | null;
+    onexpand: (p: Panel) => void;
+    onhide: () => void;
+    tempSetup: CpuTempStatus | null;
+    tempBusy: boolean;
+    onenabletemp: () => void;
+  } = $props();
 
   const C = 2 * Math.PI * 18;
 
@@ -21,7 +32,9 @@
   let rings = $derived.by((): Ring[] => {
     if (!stats) return [];
     const { cpu, ram, gpu } = stats;
-    const list: Ring[] = [{ panel: "cpu", value: cpu.usage, label: "CPU", title: t.viewProcesses.cpu }];
+    const cpuLabel =
+      cpu.tempC != null ? `CPU · ${Math.round(cpu.tempC)}°C` : cpu.powerW != null ? `CPU · ${Math.round(cpu.powerW)} W` : "CPU";
+    const list: Ring[] = [{ panel: "cpu", value: cpu.usage, label: cpuLabel, title: t.viewProcesses.cpu }];
     if (gpu) {
       list.push({
         panel: "gpu",
@@ -52,6 +65,9 @@
   <header data-tauri-drag-region>
     <span class="host"><i class="dot"></i>{stats?.host ?? "…"}</span>
     <div class="actions">
+      {#if tempSetup}
+        <TempSetup status={tempSetup} busy={tempBusy} onclick={onenabletemp} />
+      {/if}
       <button class="icon-btn" aria-label={t.expand} title={t.expand} onclick={() => onexpand("none")}>
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
       </button>
