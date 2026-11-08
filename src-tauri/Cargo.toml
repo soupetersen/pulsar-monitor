@@ -1,0 +1,40 @@
+[package]
+name = "widgets"
+version = "0.1.0"
+description = "System monitor desktop widget for Windows (CPU, GPU, RAM)"
+authors = ["Thiago Petersen"]
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "widgets_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = "0.40.1"
+nvml-wrapper = "0.13.0"
+tauri-plugin-autostart = "2.7.0"
+tauri-plugin-window-state = "2.5.0"
+windows-sys = { version = "0.61.2", features = ["Win32_System_Performance", "Win32_Foundation"] }
+webview2-com = "0.39.1"
+windows-core = "0.62.2"
+sys-locale = "0.3.2"
+
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

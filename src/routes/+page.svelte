@@ -1,0 +1,138 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import { currentMonitor, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
+  import Compact from "$lib/Compact.svelte";
+  import Expanded from "$lib/Expanded.svelte";
+  import type { Panel, Stats, Theme } from "$lib/types";
+
+  const HISTORY = 30;
+  const win = getCurrentWindow();
+
+  let stats = $state<Stats | null>(null);
+  let expanded = $state(false);
+  let panel = $state<Panel>("none");
+  let theme = $state<Theme>(loadTheme());
+  let onTop = $state(true);
+  let cpuHist = $state<number[]>([]);
+  let gpuHist = $state<number[]>([]);
+  let shell: HTMLDivElement;
+  let maxHeight = $state(900);
+
+  function loadTheme(): Theme {
+    try {
+      return localStorage.getItem("theme") === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  }
+
+  function push(list: number[], value: number): number[] {
+    const next = list.length >= HISTORY ? list.slice(1) : list.slice();
+    next.push(value);
+    return next;
+  }
+
+  onMount(() => {
+    const unlisten: Array<Promise<() => void>> = [
+      listen<Stats>("stats", (e) => {
+        stats = e.payload;
+        cpuHist = push(cpuHist, e.payload.cpu.usage);
+        gpuHist = push(gpuHist, e.payload.gpu?.usage ?? 0);
+      }),
+      listen<boolean>("on-top-changed", (e) => (onTop = e.payload)),
+    ];
+    invoke<boolean>("is_on_top").then((v) => (onTop = v));
+
+    // The window always hugs the content, so it grows/shrinks with the view.
+    // Sized in physical pixels using the WebView's own pixel ratio, which can
+    // differ from the window's scale factor on mixed-DPI multi-monitor setups.
+    let last = "";
+    const fit = async () => {
+      const dpr = window.devicePixelRatio || 1;
+      const monitor = await currentMonitor();
+      if (monitor) {
+        // Never taller than the monitor's work area (taskbar excluded).
+        maxHeight = Math.floor(monitor.workArea.size.height / dpr) - 24;
+      }
+      const r = shell.getBoundingClientRect();
+      const w = Math.ceil(r.width * dpr);
+      const h = Math.ceil(r.height * dpr);
+      const size = `${w}x${h}`;
+      if (size === last) return;
+      last = size;
+      await win.setSize(new PhysicalSize(w, h));
+
+      // Growing downwards past the bottom of the screen? Slide the window up.
+      if (monitor) {
+        const pos = await win.outerPosition();
+        const bottom = monitor.workArea.position.y + monitor.workArea.size.height;
+        const margin = Math.round(12 * dpr);
+        if (pos.y + h > bottom - margin) {
+          const y = Math.max(monitor.workArea.position.y + margin, bottom - margin - h);
+          await win.setPosition(new PhysicalPosition(pos.x, y));
+        }
+      }
+    };
+    const ro = new ResizeObserver(() => void fit());
+    ro.observe(shell);
+    unlisten.push(win.onScaleChanged(() => requestAnimationFrame(() => ((last = ""), void fit()))));
+
+    return () => {
+      ro.disconnect();
+      unlisten.forEach((p) => p.then((f) => f()));
+    };
+  });
+
+  // Tell the backend what is on screen so it only collects that.
+  $effect(() => {
+    invoke("set_view", { expanded, panel: expanded ? panel : "none" });
+  });
+
+  $effect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("theme", theme);
+    } catch {}
+    win.setTheme(theme);
+  });
+
+  function expand(p: Panel) {
+    if (p !== "none") panel = p;
+    expanded = true;
+  }
+  const hide = () => invoke("hide_to_tray");
+</script>
+
+<div class="shell" class:expanded bind:this={shell} style:max-height="{maxHeight}px">
+  {#if expanded}
+    <Expanded
+      {stats}
+      {cpuHist}
+      {gpuHist}
+      bind:panel
+      {theme}
+      {onTop}
+      oncollapse={() => (expanded = false)}
+      ontheme={() => (theme = theme === "dark" ? "light" : "dark")}
+      ontop={() => invoke("set_on_top", { on: !onTop })}
+      onhide={hide}
+    />
+  {:else}
+    <Compact {stats} onexpand={expand} onhide={hide} />
+  {/if}
+</div>
+
+<style>
+  .shell {
+    width: 372px;
+    background: var(--card);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+  }
+  .shell.expanded {
+    width: 440px;
+  }
+</style>

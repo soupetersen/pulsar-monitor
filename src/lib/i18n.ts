@@ -1,0 +1,64 @@
+// UI strings. English by default, Portuguese when the system language is Portuguese.
+
+export const locale = typeof navigator !== "undefined" ? navigator.language || "en-US" : "en-US";
+const isPt = locale.toLowerCase().startsWith("pt");
+
+const en = {
+  expand: "Expand",
+  minimizeToTray: "Minimize to tray",
+  viewProcesses: { cpu: "View CPU processes", gpu: "View GPU processes", ram: "View RAM processes" },
+  system: "System",
+  uptime: (t: string) => `Up for ${t}`,
+  toLight: "Switch to light theme",
+  toDark: "Switch to dark theme",
+  changeTheme: "Change theme",
+  alwaysOnTop: "Always on top",
+  collapse: "Collapse",
+  collapseAria: "Collapse to compact mode",
+  showProcs: { cpu: "Show CPU processes", gpu: "Show GPU processes", ram: "Show RAM processes" },
+  hideProcs: { cpu: "Hide CPU processes", gpu: "Hide GPU processes", ram: "Hide RAM processes" },
+  perThread: "Per-thread usage",
+  temp: "Temp.",
+  power: "Power",
+  fan: "Fan",
+  memory: "Memory",
+  available: (gb: string) => `${gb} GB available`,
+  network: "Network",
+  disk: "Disk",
+  collecting: "Collecting data…",
+  loading: "Loading…",
+  noProcesses: "No processes using it right now.",
+  processes: (n: number) => `${n} processes`,
+  ofRam: (pct: string) => `${pct}% of RAM`,
+};
+
+const pt: typeof en = {
+  expand: "Expandir",
+  minimizeToTray: "Minimizar para a bandeja",
+  viewProcesses: { cpu: "Ver processos na CPU", gpu: "Ver processos na GPU", ram: "Ver processos na RAM" },
+  system: "Sistema",
+  uptime: (t) => `Ligado há ${t}`,
+  toLight: "Mudar para tema claro",
+  toDark: "Mudar para tema escuro",
+  changeTheme: "Trocar tema",
+  alwaysOnTop: "Sempre no topo",
+  collapse: "Recolher",
+  collapseAria: "Recolher para o modo compacto",
+  showProcs: { cpu: "Ver processos na CPU", gpu: "Ver processos na GPU", ram: "Ver processos na RAM" },
+  hideProcs: { cpu: "Ocultar processos na CPU", gpu: "Ocultar processos na GPU", ram: "Ocultar processos na RAM" },
+  perThread: "Uso por thread",
+  temp: "Temp.",
+  power: "Potência",
+  fan: "Ventoinha",
+  memory: "Memória",
+  available: (gb) => `Disponível ${gb} GB`,
+  network: "Rede",
+  disk: "Disco",
+  collecting: "Coletando dados…",
+  loading: "Carregando…",
+  noProcesses: "Nenhum processo usando agora.",
+  processes: (n) => `${n} processos`,
+  ofRam: (pct) => `${pct}% da RAM`,
+};
+
+export const t = isPt ? pt : en;

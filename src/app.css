@@ -1,0 +1,88 @@
+:root {
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* The window itself gets the Windows 11 Mica backdrop; the card tints it. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --text: #f3f4f6;
+  --muted: #b4b9c2;
+  --card: rgba(28, 29, 34, 0.55);
+  --inset: rgba(255, 255, 255, 0.05);
+  --chip: rgba(255, 255, 255, 0.07);
+  --track: rgba(255, 255, 255, 0.12);
+  --hover: rgba(255, 255, 255, 0.09);
+  --accent: #4cc2ff;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --text: #111111;
+  --muted: #565b64;
+  --card: rgba(252, 252, 253, 0.62);
+  --inset: rgba(0, 0, 0, 0.04);
+  --chip: rgba(0, 0, 0, 0.05);
+  --track: rgba(0, 0, 0, 0.09);
+  --hover: rgba(0, 0, 0, 0.06);
+  --accent: #111111;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  color: var(--text);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  transition: background-color 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.icon-btn:active {
+  transform: scale(0.94);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* Header text should not swallow drag gestures. */
+[data-tauri-drag-region] > :not(button):not(.actions) {
+  pointer-events: none;
+}
+
+/* Value changes animate in a few discrete frames instead of ~60–144 fps:
+   still reads as motion, but the WebView only repaints ~8 times per update
+   (continuous transitions cost ~25% of a core on a 4K screen). */
+:root {
+  --value-anim: 0.4s steps(8, end);
+}
