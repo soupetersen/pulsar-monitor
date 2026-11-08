@@ -1,6 +1,6 @@
 {
   "name": "pulsar",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "System monitor desktop widget for Windows (CPU, GPU, RAM)",
   "type": "module",
   "scripts": {
