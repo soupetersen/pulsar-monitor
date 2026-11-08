@@ -69,6 +69,9 @@
     // Sized in physical pixels using the WebView's own pixel ratio, which can
     // differ from the window's scale factor on mixed-DPI multi-monitor setups.
     let last = "";
+    // The window starts hidden (tauri.conf.json) so it never flashes white;
+    // it is shown once the UI has rendered and the window has its final size.
+    let shown = false;
     const fit = async () => {
       const dpr = window.devicePixelRatio || 1;
       const monitor = await currentMonitor();
@@ -93,6 +96,10 @@
           const y = Math.max(monitor.workArea.position.y + margin, bottom - margin - h);
           await win.setPosition(new PhysicalPosition(pos.x, y));
         }
+      }
+      if (!shown) {
+        shown = true;
+        await win.show();
       }
     };
     const ro = new ResizeObserver(() => void fit());

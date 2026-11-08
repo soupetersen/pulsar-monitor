@@ -185,11 +185,33 @@
       </div>
     </div>
   {:else}
-    <p class="muted small">{t.collecting}</p>
+    <div class="loading" aria-busy="true">
+      <svg class="spinner" aria-hidden="true" width="28" height="28" viewBox="0 0 44 44">
+        <circle cx="22" cy="22" r="18" fill="none" stroke="var(--track)" stroke-width="4" />
+        <circle cx="22" cy="22" r="18" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" stroke-dasharray="22 113.1" />
+      </svg>
+      <span class="muted">{t.collecting}</span>
+    </div>
   {/if}
 </div>
 
 <style>
+  .loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 48px 0;
+    font-size: 12px;
+  }
+  .spinner {
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   .card {
     padding: 12px 14px 14px;
     display: flex;

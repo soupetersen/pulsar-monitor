@@ -25,6 +25,7 @@
         "skipTaskbar": true,
         "shadow": true,
         "center": true,
+        "visible": false,
         "windowEffects": {
           "effects": ["mica"]
         }

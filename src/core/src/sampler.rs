@@ -14,6 +14,7 @@ use crate::gpu::NvGpu;
 use crate::pdh::{Counter, Query};
 
 const TICK: Duration = Duration::from_secs(1);
+const FIRST_TICK: Duration = Duration::from_millis(300);
 const TOP_PROCS: usize = 8;
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Debug)]
@@ -216,7 +217,9 @@ fn run(app: AppHandle, view: SharedView) {
     let mut temp_reader: Option<crate::cpu_sensor::Reader> = None;
     let mut last_reader_attempt: Option<Instant> = None;
 
-    let mut next = Instant::now() + TICK;
+    // First sample soon after startup so the UI isn't left loading for a full
+    // second; CPU usage only needs a couple hundred ms between refreshes.
+    let mut next = Instant::now() + FIRST_TICK;
     loop {
         std::thread::sleep(next.saturating_duration_since(Instant::now()));
         next += TICK;

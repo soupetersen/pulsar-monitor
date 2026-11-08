@@ -77,6 +77,21 @@
     </div>
   </header>
 
+  {#if !stats}
+    <div class="rings" style:grid-template-columns="repeat(4, minmax(0, 1fr))" aria-busy="true" aria-label={t.collecting}>
+      {#each ["CPU", "GPU", "RAM", "VRAM"] as label (label)}
+        <div class="ring placeholder">
+          <span class="dial">
+            <svg class="spinner" aria-hidden="true" width="52" height="52" viewBox="0 0 44 44">
+              <circle cx="22" cy="22" r="18" fill="none" stroke="var(--track)" stroke-width="4" />
+              <circle cx="22" cy="22" r="18" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" stroke-dasharray="22 113.1" />
+            </svg>
+          </span>
+          <span class="label">{label}</span>
+        </div>
+      {/each}
+    </div>
+  {:else}
   <div class="rings" style:grid-template-columns="repeat({Math.max(rings.length, 1)}, minmax(0, 1fr))">
     {#each rings as r, i (i)}
       <button class="ring" title={r.title} aria-label="{r.label}: {pct(r.value)}. {r.title}" onclick={() => onexpand(r.panel)}>
@@ -102,6 +117,7 @@
       </button>
     {/each}
   </div>
+  {/if}
 </div>
 
 <style>
@@ -155,6 +171,19 @@
     position: relative;
     width: 52px;
     height: 52px;
+  }
+  .ring.placeholder:hover {
+    background: transparent;
+    transform: none;
+  }
+  /* Only runs for the fraction of a second before the first sample arrives. */
+  .spinner {
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .arc {
     transition: stroke-dasharray var(--value-anim);
