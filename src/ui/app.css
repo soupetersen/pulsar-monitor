@@ -23,7 +23,7 @@
   color-scheme: light;
   --text: #111111;
   --muted: #565b64;
-  --card: rgba(252, 252, 253, 0.62);
+  --card: rgba(252, 252, 253, 0.9);
   --inset: rgba(0, 0, 0, 0.04);
   --chip: rgba(0, 0, 0, 0.05);
   --track: rgba(0, 0, 0, 0.09);
