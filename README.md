@@ -2,6 +2,16 @@
 
 A lightweight desktop widget for Windows 11 that shows CPU, GPU, RAM, network and disk usage. Built with Tauri 2 (Rust) and Svelte.
 
+<p align="center">
+  <img src="docs/screenshots/compact-dark.png" alt="Pulsar compact view, dark theme" width="420">
+  <img src="docs/screenshots/compact-light.png" alt="Pulsar compact view, light theme" width="420">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/expanded-dark.png" alt="Pulsar expanded view, dark theme" width="400">
+  <img src="docs/screenshots/expanded-light.png" alt="Pulsar expanded view, light theme" width="400">
+</p>
+
 - **Compact mode:** rings for CPU (with temperature or power), GPU (with temperature), RAM and VRAM.
 - **Expanded mode:** history charts, per-thread usage, CPU temperature, power and clock, GPU details (temperature, power, VRAM, fan), network, disk, and the top processes by CPU, GPU or RAM, one click away.
 - **Themes:** dark and light (sun/moon button), on top of the Windows 11 Mica backdrop.
