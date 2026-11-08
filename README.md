@@ -22,7 +22,7 @@ A lightweight desktop widget for Windows 11 that shows CPU, GPU, RAM, network an
 
 Download `Pulsar_x.y.z_x64-setup.exe` from the [Releases](../../releases) page and run it. It installs for the current user, so no admin rights are needed. It requires the WebView2 runtime, which ships with Windows 11.
 
-### CPU temperature (AMD Ryzen)
+### CPU temperature (AMD Ryzen, Intel Core)
 
 Windows doesn't expose the CPU temperature to regular programs. Pulsar reads it from the processor through the free, signed [PawnIO](https://pawnio.eu/) driver, which needs administrator rights.
 
@@ -55,7 +55,7 @@ src/
 | NVIDIA GPU (usage, temperature, power, VRAM, fan, clock) | NVML via `nvml-wrapper` (uses the driver's `nvml.dll`) |
 | Effective CPU clock, disk activity, per-process GPU usage | Windows PDH performance counters (the same source Task Manager uses) |
 | CPU package power | Windows "Energy Meter" counters (RAPL), no driver needed |
-| CPU temperature (AMD) | PawnIO driver with its signed `AMDFamily17` module (Tctl register) |
+| CPU temperature (AMD, Intel) | PawnIO driver with its signed `AMDFamily17` module (Tctl register) or `IntelMSR` module (package thermal status) |
 
 The sampler (`src/core/src/sampler.rs`) runs once per second and only collects what is on screen:
 - **Compact mode:** totals only.
@@ -79,4 +79,4 @@ Most of the memory belongs to WebView2. The Rust process itself uses about 35 MB
 
 ## Third-party
 
-`src/core/resources/pawnio/AMDFamily17.bin` is a signed module from [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules), licensed under LGPL-2.1 (see `COPYING-LGPL-2.1` next to it).
+`src/core/resources/pawnio/AMDFamily17.bin` and `IntelMSR.bin` are signed modules from [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules), licensed under LGPL-2.1 (see `COPYING-LGPL-2.1` next to it).

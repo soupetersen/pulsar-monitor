@@ -1,4 +1,4 @@
-//! CPU temperature for AMD Ryzen through the PawnIO driver.
+//! CPU temperature for AMD Ryzen and Intel Core through the PawnIO driver.
 //!
 //! PawnIO only accepts administrators, so the reading happens in a tiny
 //! elevated helper: this same executable started with `--cpu-sensor` by a
@@ -56,6 +56,28 @@ const AMD_MODULE: &[u8] = include_bytes!("../resources/pawnio/AMDFamily17.bin");
 /// SMN register THM_TCON_CUR_TMP: current Tctl.
 const SMN_THM_TCON_CUR_TMP: u64 = 0x0005_9800;
 
+/// Signed PawnIO module for Intel MSRs (read-only allowlist includes the thermal MSRs), LGPL-2.1.
+const INTEL_MODULE: &[u8] = include_bytes!("../resources/pawnio/IntelMSR.bin");
+/// MSR_TEMPERATURE_TARGET: bits 23:16 hold TjMax.
+const MSR_TEMPERATURE_TARGET: u64 = 0x1a2;
+/// IA32_PACKAGE_THERM_STATUS: bits 22:16 hold how far below TjMax the package is.
+const MSR_PACKAGE_THERM_STATUS: u64 = 0x1b1;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Vendor {
+    Amd,
+    Intel,
+}
+
+impl Vendor {
+    fn module(self) -> (&'static str, &'static [u8]) {
+        match self {
+            Vendor::Amd => ("AMDFamily17", AMD_MODULE),
+            Vendor::Intel => ("IntelMSR", INTEL_MODULE),
+        }
+    }
+}
+
 #[repr(C)]
 struct Shared {
     magic: AtomicU32,
@@ -79,10 +101,15 @@ fn pawnio_dll() -> PathBuf {
     program_files().join(r"PawnIO\PawnIOLib.dll")
 }
 
-pub fn is_amd() -> bool {
+/// CPU vendor, if it's one the sensor supports.
+pub fn vendor() -> Option<Vendor> {
     let id = std::arch::x86_64::__cpuid(0);
     let vendor: Vec<u8> = [id.ebx, id.edx, id.ecx].iter().flat_map(|r| r.to_le_bytes()).collect();
-    vendor == b"AuthenticAMD"
+    match vendor.as_slice() {
+        b"AuthenticAMD" => Some(Vendor::Amd),
+        b"GenuineIntel" => Some(Vendor::Intel),
+        _ => None,
+    }
 }
 
 pub fn pawnio_installed() -> bool {
@@ -197,7 +224,8 @@ struct PawnIo {
 }
 
 impl PawnIo {
-    fn open() -> Option<Self> {
+    fn open(vendor: Vendor) -> Option<Self> {
+        let (module_name, module) = vendor.module();
         unsafe {
             let lib = match libloading::Library::new(pawnio_dll()) {
                 Ok(lib) => lib,
@@ -216,9 +244,9 @@ impl PawnIo {
                 log(&format!("pawnio_open failed: HRESULT 0x{:08X}", hr as u32));
                 return None;
             }
-            let hr = load(handle, AMD_MODULE.as_ptr(), AMD_MODULE.len());
+            let hr = load(handle, module.as_ptr(), module.len());
             if hr < 0 {
-                log(&format!("pawnio_load(AMDFamily17) failed: HRESULT 0x{:08X}", hr as u32));
+                log(&format!("pawnio_load({module_name}) failed: HRESULT 0x{:08X}", hr as u32));
                 close(handle);
                 return None;
             }
@@ -226,15 +254,16 @@ impl PawnIo {
         }
     }
 
-    fn read_smn(&self, offset: u64) -> Option<u32> {
+    /// Runs a one-in/one-out ioctl of the loaded module.
+    fn call(&self, name: &std::ffi::CStr, arg: u64) -> Option<u64> {
         let mut out = 0u64;
         let mut written = 0usize;
-        let hr = unsafe { (self.exec)(self.handle, c"ioctl_read_smn".as_ptr().cast(), &offset, 1, &mut out, 1, &mut written) };
+        let hr = unsafe { (self.exec)(self.handle, name.as_ptr().cast(), &arg, 1, &mut out, 1, &mut written) };
         if hr < 0 || written != 1 {
-            log(&format!("ioctl_read_smn(0x{offset:X}) failed: HRESULT 0x{:08X}, written {written}", hr as u32));
+            log(&format!("{}(0x{arg:X}) failed: HRESULT 0x{:08X}, written {written}", name.to_string_lossy(), hr as u32));
             return None;
         }
-        Some(out as u32)
+        Some(out)
     }
 }
 
@@ -244,20 +273,35 @@ impl Drop for PawnIo {
     }
 }
 
-fn read_tctl(pawn: &PawnIo, pci_mutex: HANDLE) -> Option<f32> {
+/// AMD: Tctl from the SMN thermal register.
+fn read_amd(pawn: &PawnIo, pci_mutex: HANDLE) -> Option<f32> {
     let wait = unsafe { WaitForSingleObject(pci_mutex, 200) };
     if wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED {
         return None;
     }
-    let raw = pawn.read_smn(SMN_THM_TCON_CUR_TMP);
+    let raw = pawn.call(c"ioctl_read_smn", SMN_THM_TCON_CUR_TMP);
     unsafe { ReleaseMutex(pci_mutex) };
-    let raw = raw?;
+    let raw = raw? as u32;
     // Bits 31:21 hold the temperature in 1/8 °C; bit 19 selects the -49 °C range.
     let mut temp = ((raw >> 21) & 0x7ff) as f32 / 8.0;
     if raw & 0x8_0000 != 0 {
         temp -= 49.0;
     }
     Some(temp)
+}
+
+/// Intel: TjMax (MSR 0x1A2) once at startup; 100 °C if the CPU doesn't report it.
+fn read_intel_tjmax(pawn: &PawnIo) -> f32 {
+    match pawn.call(c"ioctl_read_msr", MSR_TEMPERATURE_TARGET).map(|v| (v >> 16) & 0xff) {
+        Some(tjmax) if tjmax > 0 => tjmax as f32,
+        _ => 100.0,
+    }
+}
+
+/// Intel: package temperature = TjMax - digital readout (MSR 0x1B1, bits 22:16).
+fn read_intel(pawn: &PawnIo, tjmax: f32) -> Option<f32> {
+    let raw = pawn.call(c"ioctl_read_msr", MSR_PACKAGE_THERM_STATUS)?;
+    Some(tjmax - ((raw >> 16) & 0x7f) as f32)
 }
 
 /// Entry point for `--cpu-sensor`. Runs until killed.
@@ -268,9 +312,14 @@ pub fn run_helper() -> i32 {
             log("helper: another instance is already running");
             return 0;
         }
-        log("helper: starting");
+        let Some(cpu) = vendor() else {
+            log("helper: unsupported CPU vendor");
+            return 1;
+        };
+        log(&format!("helper: starting ({cpu:?})"));
 
-        let Some(pawn) = PawnIo::open() else { return 1 };
+        let Some(pawn) = PawnIo::open(cpu) else { return 1 };
+        let tjmax = if cpu == Vendor::Intel { read_intel_tjmax(&pawn) } else { 0.0 };
 
         // Readable by interactive users (the unelevated widget), full access for SYSTEM/admins.
         let sddl = wide("D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GR;;;IU)");
@@ -297,7 +346,10 @@ pub fn run_helper() -> i32 {
 
         let mut first = true;
         loop {
-            let reading = read_tctl(&pawn, pci_mutex);
+            let reading = match cpu {
+                Vendor::Amd => read_amd(&pawn, pci_mutex),
+                Vendor::Intel => read_intel(&pawn, tjmax),
+            };
             if first {
                 log(&format!("helper: first reading: {reading:?} C"));
                 first = false;

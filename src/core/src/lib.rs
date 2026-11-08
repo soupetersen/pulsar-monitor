@@ -20,7 +20,7 @@ struct TrayItems {
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct CpuTempStatus {
-    /// AMD CPU (the only kind the sensor supports).
+    /// AMD or Intel CPU (the kinds the sensor supports).
     supported: bool,
     /// PawnIO driver installed.
     pawnio: bool,
@@ -29,7 +29,7 @@ struct CpuTempStatus {
 }
 
 fn cpu_temp_status_now() -> CpuTempStatus {
-    let supported = cpu_sensor::is_amd();
+    let supported = cpu_sensor::vendor().is_some();
     let pawnio = supported && cpu_sensor::pawnio_installed();
     CpuTempStatus { supported, pawnio, enabled: pawnio && cpu_sensor::enabled() }
 }
@@ -168,8 +168,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let on_top = CheckMenuItem::with_id(app, "on_top", labels.on_top, true, true, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", labels.autostart, true, autostart_on, None::<&str>)?;
-    // CPU temperature (AMD only): needs the PawnIO driver and a one-time UAC prompt.
-    let cpu_temp_supported = cpu_sensor::is_amd();
+    // CPU temperature (AMD and Intel): needs the PawnIO driver and a one-time UAC prompt.
+    let cpu_temp_supported = cpu_sensor::vendor().is_some();
     let pawnio = cpu_temp_supported && cpu_sensor::pawnio_installed();
     let cpu_temp = CheckMenuItem::with_id(
         app,
