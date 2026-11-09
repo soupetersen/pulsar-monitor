@@ -69,7 +69,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          command -v makensis || choco install nsis -y --no-progress
+          # Not preinstalled; Chocolatey's feed sometimes times out, so retry.
+          for attempt in 1 2 3 4; do
+            command -v makensis && break
+            choco install nsis -y --no-progress && break
+            sleep $((attempt * 15))
+          done
           echo "C:/Program Files (x86)/NSIS" >> "$GITHUB_PATH"
 
       - name: Build
