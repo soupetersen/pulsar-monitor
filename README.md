@@ -24,7 +24,7 @@ A lightweight desktop widget that shows CPU, GPU, RAM, network and disk usage on
 |---|---|---|---|
 | CPU, RAM, processes, network | ✅ | ✅ | ✅ |
 | CPU clock, disk activity | ✅ | ✅ | — |
-| CPU power | ✅ | ✅ when RAPL is readable (often root-only) | — |
+| CPU power | ✅ | ✅ one-time setup (see below) | — |
 | CPU temperature | ✅ AMD and Intel, one-time setup (see below) | ✅ AMD and Intel, no setup | ✅ |
 | NVIDIA GPU (usage, temperature, power, VRAM, fan) | ✅ | ✅ | — |
 | AMD GPU | ✅ temperature, power %, fan, VRAM | ✅ usage, temperature, power, fan, VRAM | ✅ usage (Intel Macs) |
@@ -51,6 +51,10 @@ When the temperature is off, a thermometer icon shows up in the widget. Click it
 The helper runs from a copy under `C:\Program Files\Pulsar`, which only administrators can modify. You can turn it off again from the tray menu.
 
 On Linux and macOS the temperature comes from the system sensors and needs no setup.
+
+### CPU power on Linux
+
+Since 2020 the kernel lets only root read the CPU energy counter (RAPL), because it could be used as a side channel (Platypus). When that's the case, a lightning icon shows up in place of the CPU power. Click it and enter your password once: Pulsar adds a udev rule (`/etc/udev/rules.d/70-pulsar-rapl.rules`) that makes the counter readable, now and after every boot. To undo it, delete that file and reboot.
 
 ## Build
 

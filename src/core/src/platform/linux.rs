@@ -1,6 +1,7 @@
 //! Linux: everything comes from sysfs/procfs and works without root, except
-//! the RAPL energy counter, which many distributions restrict to root (then
-//! the CPU power just isn't shown).
+//! the RAPL energy counter, which the kernel restricts to root since the
+//! Platypus side channel (2020). The UI offers a one-time setup that makes it
+//! readable (see `enable_power`); until then the CPU power isn't shown.
 //!
 //! - CPU temperature: hwmon (`k10temp`/`zenpower` on AMD, `coretemp` on Intel)
 //! - CPU power: RAPL through `/sys/class/powercap`
@@ -33,6 +34,10 @@ impl Platform {
     }
 
     pub fn sample(&mut self, want: Want) -> Extras {
+        // RAPL becomes readable once the setup ran; a failed open is cheap.
+        if self.rapl.is_none() {
+            self.rapl = Rapl::new();
+        }
         let mut extras = Extras {
             clock_ghz: average_clock_ghz(),
             cpu_power_w: self.rapl.as_mut().and_then(Rapl::watts),
@@ -91,6 +96,24 @@ fn find_cpu_temp() -> Option<PathBuf> {
 }
 
 /// Package energy counter (µJ); power is its rate of change.
+const RAPL_ENERGY: &str = "/sys/class/powercap/intel-rapl:0/energy_uj";
+const RAPL_RULE_FILE: &str = "/etc/udev/rules.d/70-pulsar-rapl.rules";
+const RAPL_RULE: &str = r#"SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", RUN+="/bin/chmod 0444 /sys%p/energy_uj""#;
+
+/// The CPU has a RAPL energy counter, but this user can't read it.
+pub fn power_setup_needed() -> bool {
+    Path::new(RAPL_ENERGY).exists() && fs::read_to_string(RAPL_ENERGY).is_err()
+}
+
+/// Makes the RAPL energy counters readable by everyone, now and on every boot
+/// (udev rule). Asks for the password through polkit (pkexec).
+pub fn enable_power() {
+    let script = format!(
+        "printf '%s\n' '{RAPL_RULE}' > {RAPL_RULE_FILE} && chmod 0444 /sys/class/powercap/intel-rapl:*/energy_uj"
+    );
+    let _ = std::process::Command::new("pkexec").args(["/bin/sh", "-c", &script]).status();
+}
+
 struct Rapl {
     energy: PathBuf,
     max: u64,
@@ -100,8 +123,8 @@ struct Rapl {
 impl Rapl {
     fn new() -> Option<Self> {
         let dir = PathBuf::from("/sys/class/powercap/intel-rapl:0");
-        let energy = dir.join("energy_uj");
-        // Unreadable without root on many distributions.
+        let energy = PathBuf::from(RAPL_ENERGY);
+        // Unreadable without root until the setup ran.
         fs::read_to_string(&energy).ok()?;
         let max = read_millis(&dir.join("max_energy_range_uj")).unwrap_or(i64::MAX) as u64;
         Some(Self { energy, max, last: None })

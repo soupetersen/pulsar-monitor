@@ -72,6 +72,23 @@ fn toggle_cpu_temp(app: &AppHandle, enable: bool) -> CpuTempStatus {
     status
 }
 
+/// Linux: the CPU power counter exists but needs the one-time setup.
+#[tauri::command]
+async fn cpu_power_setup() -> bool {
+    #[cfg(target_os = "linux")]
+    return platform::power_setup_needed();
+    #[cfg(not(target_os = "linux"))]
+    false
+}
+
+/// Linux: runs the setup (password prompt). Returns whether it's still needed.
+#[tauri::command]
+async fn enable_cpu_power() -> bool {
+    #[cfg(target_os = "linux")]
+    platform::enable_power();
+    cpu_power_setup().await
+}
+
 /// Opens the PawnIO website (where the driver installer is) in the browser.
 #[tauri::command]
 fn open_pawnio_site() {
@@ -287,6 +304,8 @@ pub fn run() {
             set_on_top,
             cpu_temp_status,
             set_cpu_temp,
+            cpu_power_setup,
+            enable_cpu_power,
             open_pawnio_site,
             updater::update_status,
             updater::install_update

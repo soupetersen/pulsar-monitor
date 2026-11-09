@@ -2,20 +2,36 @@
   import type { CpuTempStatus } from "./types";
   import { t } from "./i18n";
 
-  /** Shown while CPU temperature is supported but not enabled yet. */
+  /** Shown while a CPU sensor (temperature, or power on Linux) needs a one-time setup. */
   let {
-    status,
+    status = null,
+    kind = "temp",
     busy,
     onclick,
     label = false,
-  }: { status: CpuTempStatus; busy: boolean; onclick: () => void; label?: boolean } = $props();
+  }: { status?: CpuTempStatus | null; kind?: "temp" | "power"; busy: boolean; onclick: () => void; label?: boolean } =
+    $props();
 
-  let tip = $derived(busy ? t.cpuTempEnabling : status.pawnio ? t.cpuTempOff : t.cpuTempNeedsPawnio);
+  let tip = $derived(
+    kind === "power"
+      ? busy
+        ? t.cpuPowerEnabling
+        : t.cpuPowerOff
+      : busy
+        ? t.cpuTempEnabling
+        : status?.pawnio
+          ? t.cpuTempOff
+          : t.cpuTempNeedsPawnio,
+  );
 </script>
 
 <button class="temp-setup" class:chip={label} class:busy disabled={busy} title={tip} aria-label={tip} {onclick}>
   <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" />
+    {#if kind === "power"}
+      <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />
+    {:else}
+      <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" />
+    {/if}
   </svg>
   <i class="dot"></i>
   {#if label}<span>{busy ? t.enabling : t.enable}</span>{/if}

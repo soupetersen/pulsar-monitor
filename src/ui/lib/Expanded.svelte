@@ -23,6 +23,9 @@
     tempSetup,
     tempBusy,
     onenabletemp,
+    powerSetup,
+    powerBusy,
+    onenablepower,
     update,
   }: {
     stats: Stats | null;
@@ -38,6 +41,9 @@
     tempSetup: CpuTempStatus | null;
     tempBusy: boolean;
     onenabletemp: () => void;
+    powerSetup: boolean;
+    powerBusy: boolean;
+    onenablepower: () => void;
     update: UpdateState | null;
   } = $props();
 
@@ -138,7 +144,16 @@
             <b>—</b>
           {/if}
         </div>
-        <div><span class="muted small">{t.power}</span><b>{c.powerW != null ? `${Math.round(c.powerW)} W` : "—"}</b></div>
+        <div>
+          <span class="muted small">{t.power}</span>
+          {#if c.powerW != null}
+            <b>{Math.round(c.powerW)} W</b>
+          {:else if powerSetup}
+            <TempSetup kind="power" busy={powerBusy} onclick={onenablepower} label />
+          {:else}
+            <b>—</b>
+          {/if}
+        </div>
         <div><span class="muted small">Clock</span><b>{c.clockGhz ? `${f2(c.clockGhz)} GHz` : "—"}</b></div>
         <div><span class="muted small">Threads</span><b>{c.threads}</b></div>
       </div>

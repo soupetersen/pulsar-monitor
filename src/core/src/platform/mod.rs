@@ -15,7 +15,7 @@ pub use self::windows::Platform;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use self::linux::Platform;
+pub use self::linux::{enable_power, power_setup_needed, Platform};
 
 #[cfg(target_os = "macos")]
 mod macos;

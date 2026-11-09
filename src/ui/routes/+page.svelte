@@ -45,6 +45,19 @@
     }
   }
 
+  /** Linux: the CPU power counter is there but root-only until the setup ran. */
+  let powerSetup = $state(false);
+  let powerBusy = $state(false);
+
+  async function enablePower() {
+    powerBusy = true;
+    try {
+      powerSetup = await invoke<boolean>("enable_cpu_power");
+    } finally {
+      powerBusy = false;
+    }
+  }
+
   async function enableTemp() {
     if (!tempStatus) return;
     if (!tempStatus.pawnio) {
@@ -87,6 +100,7 @@
     invoke<{ version: string } | null>("update_status").then((u) => u && (updateVersion = u.version));
     invoke<boolean>("is_on_top").then((v) => (onTop = v));
     invoke<CpuTempStatus>("cpu_temp_status").then((s) => (tempStatus = s));
+    invoke<boolean>("cpu_power_setup").then((v) => (powerSetup = v));
 
     // The window always hugs the content, so it grows/shrinks with the view.
     // Sized in physical pixels using the WebView's own pixel ratio, which can
@@ -171,6 +185,9 @@
       {tempSetup}
       {tempBusy}
       onenabletemp={enableTemp}
+      {powerSetup}
+      {powerBusy}
+      onenablepower={enablePower}
       {update}
     />
   {:else}
