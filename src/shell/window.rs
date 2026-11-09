@@ -27,6 +27,15 @@ pub fn can_hide() -> bool {
     true
 }
 
+/// Whether the window can be kept above the others (Wayland doesn't let
+/// apps ask for it).
+pub fn can_stay_on_top() -> bool {
+    #[cfg(target_os = "linux")]
+    return !wayland();
+    #[cfg(not(target_os = "linux"))]
+    true
+}
+
 /// Whether the window's position can be read (and later restored).
 pub fn position_is_known() -> bool {
     #[cfg(target_os = "linux")]

@@ -209,7 +209,7 @@ fn procs(stats: &Stats, anim: Anim, kind: Panel, open: Panel, theme: Theme, cx: 
     [Some(div().child(toggle)), is_open.then(|| proc_list(rows_for(stats, kind).map(animated), theme))]
 }
 
-fn header(w: &Widget, stats: Option<&Stats>, on_top: bool, theme: Theme, cx: &mut Context<Widget>) -> Div {
+fn header(w: &Widget, stats: Option<&Stats>, on_top: Option<bool>, theme: Theme, cx: &mut Context<Widget>) -> Div {
     let up = stats.map(|s| (t().uptime)(&uptime(s.uptime_secs))).unwrap_or_else(|| "…".into());
     let (theme_icon, theme_next) = match w.mode {
         Mode::Dark => (icon::SUN, Mode::Light),
@@ -237,10 +237,10 @@ fn header(w: &Widget, stats: Option<&Stats>, on_top: bool, theme: Theme, cx: &mu
                     icon_btn("theme", theme_icon, 15., t().change_theme, theme, false)
                         .on_click(cx.listener(move |this, _, window, cx| this.set_mode(theme_next, window, cx))),
                 )
-                .child(
-                    icon_btn("pin", icon::PIN, 14., t().always_on_top, theme, on_top)
-                        .on_click(cx.listener(|_, _, _, cx| crate::shell::toggle_on_top(cx))),
-                )
+                .children(on_top.map(|on| {
+                    icon_btn("pin", icon::PIN, 14., t().always_on_top, theme, on)
+                        .on_click(cx.listener(|_, _, _, cx| crate::shell::toggle_on_top(cx)))
+                }))
                 .child(
                     icon_btn("collapse", icon::COLLAPSE, 14., t().collapse, theme, false)
                         .on_click(cx.listener(|this, _, _, cx| this.collapse(cx))),
@@ -257,7 +257,7 @@ pub fn render(
     stats: Option<&Stats>,
     anim: Anim,
     hist: History,
-    on_top: bool,
+    on_top: Option<bool>,
     theme: Theme,
     cx: &mut Context<Widget>,
 ) -> Div {

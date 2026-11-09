@@ -439,8 +439,12 @@ pub fn toggle_on_top(cx: &App) {
     send(Action::ToggleOnTop, cx);
 }
 
-pub fn on_top(cx: &App) -> bool {
-    cx.global::<Shell>().settings.on_top
+/// `None` where the window can't be kept on top (Wayland).
+pub fn on_top(cx: &App) -> Option<bool> {
+    if !window::can_stay_on_top() {
+        return None;
+    }
+    Some(cx.global::<Shell>().settings.on_top)
 }
 
 pub fn set_theme(mode: Mode, window: &mut gpui::Window, cx: &mut App) {
