@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use sysinfo::{Networks, ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{Networks, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tauri::{AppHandle, Emitter};
 
 use crate::gpu::NvGpu;
@@ -192,7 +192,7 @@ fn run(app: AppHandle, view: SharedView) {
             sys.refresh_processes_specifics(
                 ProcessesToUpdate::All,
                 true,
-                ProcessRefreshKind::nothing().with_cpu().with_memory(),
+                ProcessRefreshKind::nothing().with_cpu().with_memory().with_exe(UpdateKind::OnlyIfNotSet),
             );
             Some(top_processes(&sys, v.panel, ncpu, extras.gpu_procs.as_ref()))
         } else {
@@ -226,6 +226,54 @@ fn run(app: AppHandle, view: SharedView) {
     }
 }
 
+/// The executable's file name. On Linux the process name is the main
+/// thread's name, cut to 15 characters, which apps often rename (Electron
+/// and Firefox processes show up as "MainThread", for example).
+fn process_name(p: &sysinfo::Process) -> String {
+    if cfg!(target_os = "linux") {
+        if let Some(file) = p.exe().and_then(|e| e.file_name()) {
+            return file.to_string_lossy().into_owned();
+        }
+    }
+    p.name().to_string_lossy().into_owned()
+}
+
+/// Linux: resident memory minus pages shared with other processes (shared
+/// libraries, memory shared between Chrome's processes...). Plain resident
+/// memory counts those pages once per process, so multi-process apps like
+/// Chrome looked twice their size. Same measure as GNOME System Monitor.
+#[cfg(target_os = "linux")]
+fn private_memory(pid: u32) -> Option<u64> {
+    use std::sync::OnceLock;
+    static PAGE: OnceLock<u64> = OnceLock::new();
+    let page = *PAGE.get_or_init(|| {
+        // SAFETY: sysconf has no preconditions.
+        let size = unsafe { libc_sysconf_pagesize() };
+        if size > 0 { size as u64 } else { 4096 }
+    });
+    let statm = std::fs::read_to_string(format!("/proc/{pid}/statm")).ok()?;
+    let mut fields = statm.split_whitespace().skip(1).map(|f| f.parse::<u64>().ok());
+    let resident = fields.next()??;
+    let shared = fields.next()??;
+    Some(resident.saturating_sub(shared) * page)
+}
+
+#[cfg(target_os = "linux")]
+unsafe extern "C" {
+    fn sysconf(name: i32) -> i64;
+}
+
+#[cfg(target_os = "linux")]
+unsafe fn libc_sysconf_pagesize() -> i64 {
+    const SC_PAGESIZE: i32 = 30;
+    unsafe { sysconf(SC_PAGESIZE) }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn private_memory(_pid: u32) -> Option<u64> {
+    None
+}
+
 /// Groups processes by executable name (e.g. all chrome.exe together) and
 /// returns the top entries for the open panel.
 fn top_processes(sys: &System, panel: Panel, ncpu: f32, gpu: Option<&GpuProcs>) -> Vec<ProcStats> {
@@ -237,11 +285,11 @@ fn top_processes(sys: &System, panel: Panel, ncpu: f32, gpu: Option<&GpuProcs>) 
         if pid == 0 || p.thread_kind().is_some() {
             continue;
         }
-        let name = p.name().to_string_lossy().into_owned();
+        let name = process_name(p);
         let g = groups.entry(name.clone()).or_insert_with(|| ProcStats { name, ..Default::default() });
         g.count += 1;
         g.cpu += p.cpu_usage() / ncpu;
-        g.mem += p.memory();
+        g.mem += private_memory(pid).unwrap_or_else(|| p.memory());
         if let Some(gp) = gpu {
             g.gpu += gp.usage.get(&pid).copied().unwrap_or(0.0);
             g.vram += gp.vram.get(&pid).copied().unwrap_or(0);
