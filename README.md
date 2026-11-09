@@ -66,6 +66,17 @@ On Linux, install the WebKitGTK and tray dependencies first (Debian/Ubuntu):
 sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 ```
 
+## Releasing
+
+```sh
+npm run release -- patch                       # 0.3.0 -> 0.3.1, all platforms
+npm run release -- minor --platforms windows   # only the Windows installer
+npm run release -- 1.0.0 --platforms windows,linux
+npm run release -- patch --dry-run             # show what would happen
+```
+
+The command bumps the version in `package.json`, `package-lock.json`, `tauri.conf.json`, `Cargo.toml` and `Cargo.lock`, commits `Release x.y.z`, tags `vx.y.z`, pushes both, and starts the Release workflow. The workflow builds the installers of the chosen platforms and attaches them to a draft release, which is published after a quick look (`gh release edit vx.y.z --draft=false`). Regular commits only run the Build workflow.
+
 ## Project layout
 
 ```
