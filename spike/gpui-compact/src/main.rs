@@ -33,7 +33,7 @@ type Shared = Arc<Mutex<Option<Sample>>>;
 fn spawn_sampler(shared: Shared) {
     std::thread::spawn(move || {
         let Ok(mut sys) = System::new() else { return };
-        let nvml = nvml_wrapper::Nvml::init().ok();
+        let nvml = if std::env::var_os("SPIKE_NO_NVML").is_some() { None } else { nvml_wrapper::Nvml::init().ok() };
         loop {
             sys.refresh_cpu_usage();
             sys.refresh_memory();
