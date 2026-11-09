@@ -1,0 +1,56 @@
+{
+	"compilerOptions": {
+		"paths": {
+			"$lib": [
+				"../src/ui/lib"
+			],
+			"$lib/*": [
+				"../src/ui/lib/*"
+			],
+			"$app/types": [
+				"./types/index.d.ts"
+			]
+		},
+		"rootDirs": [
+			"..",
+			"./types"
+		],
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"lib": [
+			"esnext",
+			"DOM",
+			"DOM.Iterable"
+		],
+		"moduleResolution": "bundler",
+		"module": "esnext",
+		"noEmit": true,
+		"target": "esnext"
+	},
+	"include": [
+		"ambient.d.ts",
+		"env.d.ts",
+		"non-ambient.d.ts",
+		"./types/**/$types.d.ts",
+		"../vite.config.js",
+		"../vite.config.ts",
+		"../src/ui/**/*.js",
+		"../src/ui/**/*.ts",
+		"../src/ui/**/*.svelte",
+		"../test/**/*.js",
+		"../test/**/*.ts",
+		"../test/**/*.svelte",
+		"../tests/**/*.js",
+		"../tests/**/*.ts",
+		"../tests/**/*.svelte"
+	],
+	"exclude": [
+		"../node_modules/**",
+		"../src/ui/service-worker.js",
+		"../src/ui/service-worker/**/*.js",
+		"../src/ui/service-worker.ts",
+		"../src/ui/service-worker/**/*.ts",
+		"../src/ui/service-worker.d.ts",
+		"../src/ui/service-worker/**/*.d.ts"
+	]
+}

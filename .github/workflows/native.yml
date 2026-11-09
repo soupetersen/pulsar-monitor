@@ -1,0 +1,35 @@
+name: Native
+
+# Builds the gpui app on the native-ui branch (issue #6) for all three systems.
+on:
+  workflow_dispatch:
+  push:
+    branches: [native-ui]
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows, os: windows-latest, exe: pulsar.exe }
+          - { name: Linux, os: ubuntu-22.04, exe: pulsar }
+          - { name: macOS, os: macos-latest, exe: pulsar }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev libfontconfig-dev libfreetype-dev libdbus-1-dev
+      - run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pulsar-native-${{ runner.os }}
+          path: target/release/${{ matrix.exe }}
+          if-no-files-found: error

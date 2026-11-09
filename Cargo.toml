@@ -1,0 +1,39 @@
+[package]
+name = "pulsar"
+version = "0.4.6"
+description = "Lightweight system monitor desktop widget (CPU, GPU, RAM)"
+authors = ["Thiago Petersen"]
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Pinned: gpui is pre-1.0 and changes its API between versions.
+gpui = "=0.2.2"
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+sysinfo = "0.40.1"
+nvml-wrapper = "0.13.0"
+sys-locale = "0.3.2"
+raw-window-handle = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Performance", "Win32_Foundation", "Win32_System_Memory", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_System_Com", "Wdk_Graphics_Direct3D", "Win32_Graphics_Dwm"] }
+libloading = "0.8"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+io-kit-sys = "0.5"
+
+# gpui 0.2.2 pulls xattr 0.2.3 (through its tar crate), which no longer
+# builds on Linux with current libc. See patches/xattr.
+[patch.crates-io]
+xattr = { path = "patches/xattr" }
+
+[profile.release]
+# Thin LTO with parallel codegen: about the same size and speed for this app,
+# and several times faster to build than fat LTO with one codegen unit.
+lto = "thin"
+opt-level = 3
+panic = "abort"
+strip = true
