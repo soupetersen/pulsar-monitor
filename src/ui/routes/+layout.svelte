@@ -5,8 +5,11 @@
   document.documentElement.lang = locale;
   // Windows draws Mica behind the window, macOS its vibrancy; Linux has no
   // system backdrop, so the card is drawn opaque there (see app.css).
+  // Set by the Rust side: WebKitGTK's user agent claims to be Safari on a Mac.
   const ua = navigator.userAgent;
-  document.documentElement.dataset.platform = ua.includes("Windows") ? "windows" : ua.includes("Mac") ? "macos" : "linux";
+  document.documentElement.dataset.platform =
+    (window as { __PULSAR_PLATFORM__?: string }).__PULSAR_PLATFORM__ ??
+    (ua.includes("Windows") ? "windows" : ua.includes("Mac") ? "macos" : "linux");
 
   let { children } = $props();
 </script>

@@ -258,6 +258,16 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+
+/// Tells the UI which OS it runs on. The user agent can't be trusted for this:
+/// WebKitGTK reports itself as Safari on a Mac.
+fn platform_script<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    let os = if cfg!(windows) { "windows" } else if cfg!(target_os = "macos") { "macos" } else { "linux" };
+    tauri::plugin::Builder::new("pulsar-platform")
+        .js_init_script(format!("window.__PULSAR_PLATFORM__ = \"{os}\";"))
+        .build()
+}
+
 pub fn run() {
     let view: SharedView = Arc::new(Mutex::new(View { visible: true, expanded: false, panel: Panel::None }));
 
@@ -267,6 +277,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().with_state_flags(StateFlags::POSITION).build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(platform_script())
         .manage(updater::Pending::default())
         .manage(view.clone())
         .invoke_handler(tauri::generate_handler![
