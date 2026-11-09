@@ -1,12 +1,12 @@
 //! Small pieces shared by both views: icon buttons and the sparkline.
 
-use gpui::{Context, Div, FontWeight, PathBuilder, Render, Rgba, Stateful, Window, canvas, div, point, prelude::*, px, svg};
+use gpui::{Context, Div, FontWeight, PathBuilder, Render, Rgba, SharedString, Stateful, Window, canvas, div, point, prelude::*, px, svg};
 
 use super::theme::{Theme, font_family, u};
 
 /// A hover tooltip.
 pub struct Tip {
-    text: &'static str,
+    text: SharedString,
     theme: Theme,
 }
 
@@ -23,7 +23,7 @@ impl Render for Tip {
             .rounded(u(6.))
             .px(u(8.))
             .py(u(4.))
-            .child(self.text)
+            .child(self.text.clone())
     }
 }
 
@@ -48,7 +48,7 @@ pub fn icon_btn(
         .justify_center()
         .when(active, |d| d.bg(theme.chip))
         .hover(move |s| s.bg(theme.hover))
-        .tooltip(move |_, cx| cx.new(|_| Tip { text: tip, theme }).into())
+        .tooltip(move |_, cx| cx.new(|_| Tip { text: tip.into(), theme }).into())
         .child(
             svg()
                 .path(icon)
@@ -90,7 +90,7 @@ pub fn setup_btn(
             }
         })
         .when(!busy, |d| d.hover(move |s| s.bg(theme.hover)))
-        .tooltip(move |_, cx| cx.new(|_| Tip { text: tip, theme }).into())
+        .tooltip(move |_, cx| cx.new(|_| Tip { text: tip.into(), theme }).into())
         .child(
             svg()
                 .path(icon)
@@ -108,6 +108,36 @@ pub fn setup_btn(
                 .bg(theme.accent),
         )
         .when(label, |d| d.child(if busy { t.enabling } else { t.enable }))
+}
+
+/// The update button: a download arrow with a dot, in the accent colour.
+pub fn update_btn(version: &str, busy: bool, failed: bool, theme: Theme) -> Stateful<Div> {
+    let t = super::i18n::t();
+    let tip: SharedString = if busy {
+        t.updating.into()
+    } else if failed {
+        t.update_failed.into()
+    } else {
+        (t.update_available)(version).into()
+    };
+    div()
+        .id("update")
+        .relative()
+        .size(u(30.))
+        .flex_none()
+        .rounded(u(6.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(!busy, |d| d.hover(move |s| s.bg(theme.hover)))
+        .tooltip(move |_, cx| cx.new(|_| Tip { text: tip.clone(), theme }).into())
+        .child(
+            svg()
+                .path(super::assets::icon::DOWNLOAD)
+                .size(u(15.))
+                .text_color(if busy { alpha(theme.accent, 0.5) } else { theme.accent }),
+        )
+        .child(div().absolute().top(u(5.)).right(u(5.)).size(u(6.)).rounded_full().bg(theme.accent))
 }
 
 pub fn alpha(color: Rgba, a: f32) -> Rgba {

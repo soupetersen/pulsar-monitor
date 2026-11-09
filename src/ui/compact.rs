@@ -5,7 +5,7 @@ use gpui::{Context, Div, MouseButton, Stateful, div, prelude::*};
 
 use super::assets::icon;
 use super::format::{GB, f1};
-use super::parts::{icon_btn, setup_btn};
+use super::parts::{self, icon_btn, setup_btn};
 use super::ring::ring;
 use super::theme::{Theme, u};
 use super::{Anim, Widget, i18n::t};
@@ -46,6 +46,15 @@ fn rings(stats: &Stats) -> Vec<RingData> {
         }
     }
     list
+}
+
+/// The update button, while a newer version is waiting.
+pub fn update_btn(theme: Theme, cx: &mut Context<Widget>) -> Option<Stateful<Div>> {
+    let update = shell::update(cx)?;
+    Some(
+        parts::update_btn(update.version(), update.busy, update.failed, theme)
+            .when(!update.busy, |d| d.on_click(cx.listener(|_, _, _, cx| shell::install_update(cx)))),
+    )
 }
 
 /// The CPU temperature setup button, while it can be turned on.
@@ -95,6 +104,7 @@ pub fn render(stats: Option<&Stats>, anim: Anim, theme: Theme, cx: &mut Context<
             div()
                 .flex()
                 .gap(u(2.))
+                .children(update_btn(theme, cx))
                 .children(temp_setup(theme, cx))
                 .child(
                     icon_btn("expand", icon::EXPAND, 14., t().expand, theme, false)

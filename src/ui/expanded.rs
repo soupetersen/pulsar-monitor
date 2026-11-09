@@ -5,7 +5,7 @@ use gpui::{Context, Div, FontWeight, MouseButton, SharedString, Stateful, Transf
 
 use super::assets::icon;
 use super::format::{GB, bytes, f1, f2, pct, rate, short_cpu_name, uptime};
-use super::compact::temp_btn;
+use super::compact::{temp_btn, update_btn};
 use super::i18n::t;
 use super::parts::{alpha, icon_btn, setup_btn, sparkline};
 use super::ring::dial;
@@ -232,6 +232,7 @@ fn header(w: &Widget, stats: Option<&Stats>, on_top: bool, theme: Theme, cx: &mu
             div()
                 .flex()
                 .gap(u(2.))
+                .children(update_btn(theme, cx))
                 .child(
                     icon_btn("theme", theme_icon, 15., t().change_theme, theme, false)
                         .on_click(cx.listener(move |this, _, window, cx| this.set_mode(theme_next, window, cx))),

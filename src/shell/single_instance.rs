@@ -7,6 +7,16 @@
 /// show itself). Otherwise calls `on_show` whenever a later launch asks for
 /// the window, from a background thread.
 pub fn acquire(on_show: impl Fn() + Send + 'static) -> bool {
+    // Started by the updater: the old version is still quitting. Wait for
+    // it instead of handing over to it.
+    if std::env::var_os(super::updater::RESTARTED_ENV).is_some() {
+        for _ in 0..50 {
+            if !imp::taken() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
     imp::acquire(on_show)
 }
 
@@ -23,6 +33,19 @@ mod imp {
 
     const MUTEX: &str = r"Local\com.petersen.pulsar";
     const EVENT: &str = r"Local\com.petersen.pulsar.show";
+
+    pub fn taken() -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE};
+        unsafe {
+            let mutex = OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, 0, wide(MUTEX).as_ptr());
+            if mutex.is_null() {
+                return false;
+            }
+            CloseHandle(mutex);
+            true
+        }
+    }
 
     pub fn acquire(on_show: impl Fn() + Send + 'static) -> bool {
         unsafe {
@@ -64,6 +87,15 @@ mod imp {
         let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
         let user = std::env::var("USER").unwrap_or_default();
         dir.join(format!("com.petersen.pulsar-{user}.sock"))
+    }
+
+    pub fn taken() -> bool {
+        // Connecting would also bring the old window up: only check that
+        // something listens.
+        std::os::unix::net::UnixStream::connect(socket()).is_ok_and(|s| {
+            let _ = s.shutdown(std::net::Shutdown::Both);
+            true
+        })
     }
 
     pub fn acquire(on_show: impl Fn() + Send + 'static) -> bool {

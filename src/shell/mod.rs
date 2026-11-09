@@ -10,6 +10,7 @@ mod labels;
 mod settings;
 mod single_instance;
 mod tray;
+mod updater;
 mod window;
 
 use std::sync::{Arc, Mutex};
@@ -45,7 +46,25 @@ pub enum Action {
     EnablePower,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     PowerChanged,
+    UpdateFound(updater::Update),
+    InstallUpdate,
+    UpdateInstalled(updater::Restart),
+    UpdateFailed,
     Quit,
+}
+
+/// A newer version found by the updater, waiting for the user.
+#[derive(Clone)]
+pub struct UpdateState {
+    update: updater::Update,
+    pub busy: bool,
+    pub failed: bool,
+}
+
+impl UpdateState {
+    pub fn version(&self) -> &str {
+        &self.update.version
+    }
 }
 
 /// CPU sensors that need a one-time setup before they can be read.
@@ -119,6 +138,9 @@ struct Shell {
     visible: bool,
     tray: Option<tray::Tray>,
     sensors: Sensors,
+    update: Option<UpdateState>,
+    /// Wakes the updater for an early check.
+    check_updates: std::sync::mpsc::Sender<()>,
     actions: UnboundedSender<Action>,
 }
 
@@ -143,7 +165,10 @@ pub fn run() {
         let settings = Settings::load();
         let stats = cx.new(|_| StatsStore { latest: None, prev: None, changed: Instant::now(), cpu_hist: Vec::new(), gpu_hist: Vec::new() });
         let tray = tray::Tray::new(actions.clone(), checks(&settings));
-        cx.set_global(Shell { view, settings, stats: stats.clone(), window: None, visible: true, tray, sensors: sensors_now(), actions });
+        let (check_updates, nudge) = std::sync::mpsc::channel();
+        let found_tx = actions.clone();
+        updater::spawn(move |update| drop(found_tx.unbounded_send(Action::UpdateFound(update))), nudge);
+        cx.set_global(Shell { view, settings, stats: stats.clone(), window: None, visible: true, tray, sensors: sensors_now(), update: None, check_updates, actions });
         open_window(cx);
 
         cx.spawn(async move |cx| {
@@ -266,6 +291,44 @@ fn handle(action: Action, cx: &mut App) {
             shell.sensors.power_setup = sensors_now().power_setup;
             notify_window(cx);
         }
+        Action::UpdateFound(update) => {
+            let shell = cx.global_mut::<Shell>();
+            if shell.update.as_ref().is_some_and(|u| u.busy) {
+                return;
+            }
+            shell.update = Some(UpdateState { update, busy: false, failed: false });
+            notify_window(cx);
+        }
+        Action::InstallUpdate => {
+            let shell = cx.global_mut::<Shell>();
+            let Some(state) = shell.update.as_mut().filter(|u| !u.busy) else { return };
+            state.busy = true;
+            state.failed = false;
+            let update = state.update.clone();
+            let tx = shell.actions.clone();
+            notify_window(cx);
+            std::thread::spawn(move || {
+                let action = match updater::install(&update) {
+                    Ok(restart) => Action::UpdateInstalled(restart),
+                    Err(_) => Action::UpdateFailed,
+                };
+                let _ = tx.unbounded_send(action);
+            });
+        }
+        Action::UpdateInstalled(restart) => {
+            save_position(cx);
+            if let updater::Restart::Relaunch(path) = restart {
+                updater::relaunch(&path);
+            }
+            cx.quit();
+        }
+        Action::UpdateFailed => {
+            if let Some(state) = cx.global_mut::<Shell>().update.as_mut() {
+                state.busy = false;
+                state.failed = true;
+            }
+            notify_window(cx);
+        }
         Action::Quit => {
             save_position(cx);
             cx.quit();
@@ -332,6 +395,10 @@ fn set_visible(cx: &mut App, visible: bool) {
     }
     let shell = cx.global_mut::<Shell>();
     shell.visible = visible;
+    if visible {
+        // Shown after a while: a good moment to look for an update.
+        let _ = shell.check_updates.send(());
+    }
     shell.view.lock().unwrap().visible = visible;
     let Some(handle) = shell.window else { return };
     if visible {
@@ -430,4 +497,12 @@ fn open_url(url: &str) {
     let _ = std::process::Command::new("open").arg(url).spawn();
     #[cfg(target_os = "linux")]
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+}
+
+pub fn update(cx: &App) -> Option<UpdateState> {
+    cx.global::<Shell>().update.clone()
+}
+
+pub fn install_update(cx: &App) {
+    send(Action::InstallUpdate, cx);
 }

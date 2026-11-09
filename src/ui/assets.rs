@@ -40,6 +40,7 @@ pub mod icon {
     pub const BOLT: &str = "ui/bolt.svg";
     pub const CHEVRON: &str = "ui/chevron.svg";
     pub const COLLAPSE: &str = "ui/collapse.svg";
+    pub const DOWNLOAD: &str = "ui/download.svg";
     pub const EXPAND: &str = "ui/expand.svg";
     pub const MINIMIZE: &str = "ui/minimize.svg";
     pub const MOON: &str = "ui/moon.svg";

@@ -34,6 +34,9 @@ pub struct Strings {
     pub cpu_power_enabling: &'static str,
     pub enable: &'static str,
     pub enabling: &'static str,
+    pub update_available: fn(&str) -> String,
+    pub updating: &'static str,
+    pub update_failed: &'static str,
 }
 
 fn index(panel: Panel) -> usize {
@@ -79,6 +82,9 @@ const EN: Strings = Strings {
     cpu_power_enabling: "Allowing the CPU power reading…",
     enable: "Enable",
     enabling: "Enabling…",
+    update_available: |v| format!("Version {v} is available. Click to update and restart."),
+    updating: "Updating…",
+    update_failed: "The update failed. Click to try again.",
 };
 
 const PT: Strings = Strings {
@@ -110,6 +116,9 @@ const PT: Strings = Strings {
     cpu_power_enabling: "Liberando a leitura da potência da CPU…",
     enable: "Ativar",
     enabling: "Ativando…",
+    update_available: |v| format!("Versão {v} disponível. Clique para atualizar e reiniciar."),
+    updating: "Atualizando…",
+    update_failed: "A atualização falhou. Clique para tentar de novo.",
 };
 
 fn locale() -> &'static str {
