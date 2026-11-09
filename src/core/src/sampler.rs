@@ -232,7 +232,9 @@ fn top_processes(sys: &System, panel: Panel, ncpu: f32, gpu: Option<&GpuProcs>) 
     let mut groups: HashMap<String, ProcStats> = HashMap::new();
     for (pid, p) in sys.processes() {
         let pid = pid.as_u32();
-        if pid == 0 {
+        // On Linux sysinfo also lists threads (Chrome's "ThreadPoolForeg"...),
+        // each reporting the whole process memory. Count real processes only.
+        if pid == 0 || p.thread_kind().is_some() {
             continue;
         }
         let name = p.name().to_string_lossy().into_owned();
