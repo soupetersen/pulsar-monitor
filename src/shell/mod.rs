@@ -162,6 +162,8 @@ pub fn run() {
     });
 
     Application::new().with_assets(crate::ui::Assets).run(move |cx: &mut App| {
+        #[cfg(target_os = "macos")]
+        window::hide_from_dock();
         let settings = Settings::load();
         let stats = cx.new(|_| StatsStore { latest: None, prev: None, changed: Instant::now(), cpu_hist: Vec::new(), gpu_hist: Vec::new() });
         let tray = tray::Tray::new(actions.clone(), checks(&settings));

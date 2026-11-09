@@ -187,22 +187,127 @@ pub fn fit(window: &mut Window, size: Size<Pixels>, cx: &gpui::App) {
 }
 
 #[cfg(not(windows))]
-pub fn apply_native_style(_window: &Window, _on_top: bool, _dark: bool) {}
+pub fn apply_native_style(window: &Window, on_top: bool, _dark: bool) {
+    // gpui makes pop-up windows float above everything already.
+    if !on_top {
+        set_on_top(window, false);
+    }
+}
 
 #[cfg(not(windows))]
 pub fn set_dark(_window: &Window, _dark: bool) {}
 
-// TODO(phase 2): always on top on Linux (_NET_WM_STATE_ABOVE on X11; not
-// available to Wayland clients) and macOS (NSWindow level).
-#[cfg(not(windows))]
-pub fn set_on_top(_window: &Window, _on: bool) {}
+#[cfg(target_os = "macos")]
+mod mac {
+    use gpui::Window;
+    use objc::runtime::{Object, YES};
+    use objc::{class, msg_send, sel, sel_impl};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-#[cfg(not(windows))]
+    pub fn ns_window(window: &Window) -> Option<*mut Object> {
+        let handle = HasWindowHandle::window_handle(window).ok()?;
+        let RawWindowHandle::AppKit(h) = handle.as_raw() else { return None };
+        let view = h.ns_view.as_ptr() as *mut Object;
+        let ns_window: *mut Object = unsafe { msg_send![view, window] };
+        (!ns_window.is_null()).then_some(ns_window)
+    }
+
+    /// No Dock icon or app menu: Pulsar lives in the menu bar. gpui sets the
+    /// regular policy at launch, so this runs after it.
+    pub fn hide_from_dock() {
+        unsafe {
+            let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+            // NSApplicationActivationPolicyAccessory
+            let _: i8 = msg_send![app, setActivationPolicy: 1isize];
+        }
+    }
+
+    pub fn set_level(window: &Window, level: isize) {
+        if let Some(w) = ns_window(window) {
+            unsafe {
+                let _: () = msg_send![w, setLevel: level];
+            }
+        }
+    }
+
+    pub fn order_out(window: &Window) {
+        if let Some(w) = ns_window(window) {
+            unsafe {
+                let _: () = msg_send![w, orderOut: std::ptr::null_mut::<Object>()];
+            }
+        }
+    }
+
+    pub fn order_front(window: &Window) {
+        if let Some(w) = ns_window(window) {
+            unsafe {
+                let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+                let _: () = msg_send![app, activateIgnoringOtherApps: YES];
+                let _: () = msg_send![w, makeKeyAndOrderFront: std::ptr::null_mut::<Object>()];
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub use mac::hide_from_dock;
+
+/// Always on top: the pop-up level gpui gives the window, or the normal one.
+#[cfg(target_os = "macos")]
+pub fn set_on_top(window: &Window, on: bool) {
+    const NS_NORMAL_WINDOW_LEVEL: isize = 0;
+    const NS_POP_UP_WINDOW_LEVEL: isize = 101;
+    mac::set_level(window, if on { NS_POP_UP_WINDOW_LEVEL } else { NS_NORMAL_WINDOW_LEVEL });
+}
+
+#[cfg(target_os = "macos")]
+pub fn hide(window: &mut Window) {
+    mac::order_out(window);
+}
+
+#[cfg(target_os = "macos")]
+pub fn show(window: &mut Window) {
+    mac::order_front(window);
+}
+
+/// Always on top through the window manager (_NET_WM_STATE_ABOVE). X11
+/// only: Wayland doesn't let apps ask for it.
+#[cfg(target_os = "linux")]
+pub fn set_on_top(window: &Window, on: bool) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    if wayland() {
+        return;
+    }
+    let Ok(handle) = HasWindowHandle::window_handle(window) else { return };
+    let id = match handle.as_raw() {
+        RawWindowHandle::Xcb(h) => h.window.get(),
+        RawWindowHandle::Xlib(h) => h.window as u32,
+        _ => return,
+    };
+    let _ = x11_set_above(id, on);
+}
+
+#[cfg(target_os = "linux")]
+fn x11_set_above(window: u32, on: bool) -> Option<()> {
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{ClientMessageEvent, ConnectionExt, EventMask};
+    let (conn, screen) = x11rb::connect(None).ok()?;
+    let root = conn.setup().roots.get(screen)?.root;
+    let atom = |name: &str| Some(conn.intern_atom(false, name.as_bytes()).ok()?.reply().ok()?.atom);
+    let (state, above) = (atom("_NET_WM_STATE")?, atom("_NET_WM_STATE_ABOVE")?);
+    // _NET_WM_STATE_REMOVE = 0, _NET_WM_STATE_ADD = 1; source: application.
+    let event = ClientMessageEvent::new(32, window, state, [on as u32, above, 0, 1, 0]);
+    let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
+    conn.send_event(false, root, mask, event).ok()?;
+    conn.flush().ok()
+}
+
+#[cfg(target_os = "linux")]
 pub fn hide(window: &mut Window) {
     window.minimize_window();
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub fn show(window: &mut Window) {
     window.activate_window();
 }
