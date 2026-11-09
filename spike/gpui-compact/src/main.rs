@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use gpui::{
     App, Application, Bounds, Context, FontWeight, MouseButton, PathBuilder, Render, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, canvas, div, point, prelude::*, px,
-    rgb, rgba, size,
+    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, canvas, div, point, prelude::*,
+    Pixels, rgb, rgba, size,
 };
 use sysinfo::System;
 
@@ -57,11 +57,42 @@ fn spawn_sampler(shared: Shared) {
     });
 }
 
+/// GNOME's "Large text" / text scaling factor (Settings › Accessibility, or
+/// `org.gnome.desktop.interface text-scaling-factor`). GTK and WebKit apply it
+/// to the whole UI, gpui doesn't, so the widget came out smaller than the
+/// WebView one. Everything is sized through `u()` to follow it.
+fn ui_scale() -> f32 {
+    use std::sync::OnceLock;
+    static SCALE: OnceLock<f32> = OnceLock::new();
+    *SCALE.get_or_init(|| {
+        if let Some(v) = std::env::var("SPIKE_SCALE").ok().and_then(|v| v.parse().ok()) {
+            return v;
+        }
+        #[cfg(target_os = "linux")]
+        if let Ok(out) = std::process::Command::new("gsettings")
+            .args(["get", "org.gnome.desktop.interface", "text-scaling-factor"])
+            .output()
+        {
+            if let Ok(v) = String::from_utf8_lossy(&out.stdout).trim().parse::<f32>() {
+                if (0.5..=3.0).contains(&v) {
+                    return v;
+                }
+            }
+        }
+        1.0
+    })
+}
+
+fn u(v: f32) -> Pixels {
+    gpui::px(v * ui_scale())
+}
+
 // Dark theme tokens from app.css.
 const TEXT: u32 = 0xf3f4f6;
 const MUTED: u32 = 0xb4b9c2;
 const ACCENT: u32 = 0x4cc2ff;
 const CARD: u32 = 0x1c1d228c; // rgba(28,29,34,0.55)
+const CARD_OPAQUE: u32 = 0x1c1d22f5; // 0.96, Linux has no backdrop
 const TRACK: u32 = 0xffffff1f; // 0.12
 const HOVER: u32 = 0xffffff17; // 0.09
 
@@ -102,22 +133,22 @@ fn ring(index: usize, value: f32, label: String) -> impl IntoElement {
         .flex()
         .flex_col()
         .items_center()
-        .gap(px(6.))
-        .pt(px(6.))
-        .pb(px(8.))
-        .rounded(px(10.))
+        .gap(u(6.))
+        .pt(u(6.))
+        .pb(u(8.))
+        .rounded(u(10.))
         .hover(|s| s.bg(rgba(HOVER)))
         .child(
             div()
                 .relative()
-                .size(px(52.))
+                .size(u(52.))
                 .child(
                     canvas(
                         |_, _, _| {},
                         move |bounds, _, window, _| {
                             let c = bounds.center();
-                            let r = px(52. * 18. / 44.);
-                            let w = px(52. * 4. / 44.);
+                            let r = u(52. * 18. / 44.);
+                            let w = u(52. * 4. / 44.);
                             let arc = |from: f32, to: f32| {
                                 let steps = ((to - from).abs() * 64.0).ceil().max(2.0) as usize;
                                 let mut b = PathBuilder::stroke(w);
@@ -152,12 +183,12 @@ fn ring(index: usize, value: f32, label: String) -> impl IntoElement {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .text_size(px(13.))
+                        .text_size(u(13.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(format!("{value:.0}%")),
                 ),
         )
-        .child(div().text_size(px(11.)).text_color(rgb(MUTED)).child(label))
+        .child(div().text_size(u(11.)).text_color(rgb(MUTED)).child(label))
 }
 
 impl Render for Compact {
@@ -183,36 +214,36 @@ impl Render for Compact {
             .size_full()
             .flex()
             .flex_col()
-            .gap(px(4.))
-            .pt(px(8.))
-            .px(px(10.))
-            .pb(px(10.))
-            .bg(rgba(CARD))
+            .gap(u(4.))
+            .pt(u(8.))
+            .px(u(10.))
+            .pb(u(10.))
+            .bg(rgba(if cfg!(target_os = "linux") { CARD_OPAQUE } else { CARD }))
             .text_color(rgb(TEXT))
-            .font_family(if cfg!(windows) { "Segoe UI Variable Text" } else { ".SystemUIFont" })
+            .font_family(if cfg!(windows) { "Segoe UI Variable Text" } else if cfg!(target_os = "macos") { ".SystemUIFont" } else { "Cantarell" })
             .child(
                 div()
                     .flex()
                     .items_center()
                     .justify_between()
-                    .pl(px(2.))
-                    .h(px(30.))
+                    .pl(u(2.))
+                    .h(u(30.))
                     .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
                     .child(
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(8.))
-                            .text_size(px(12.))
+                            .gap(u(8.))
+                            .text_size(u(12.))
                             .text_color(rgb(MUTED))
-                            .child(div().size(px(7.)).rounded_full().bg(rgb(ACCENT)))
+                            .child(div().size(u(7.)).rounded_full().bg(rgb(ACCENT)))
                             .child(self.host.clone()),
                     ),
             )
             .child(
                 div()
                     .flex()
-                    .gap(px(4.))
+                    .gap(u(4.))
                     .children(rings.into_iter().enumerate().map(|(i, (v, l))| ring(i, v, l))),
             )
     }
@@ -319,7 +350,7 @@ fn main() {
     spawn_sampler(shared.clone());
 
     Application::new().run(move |cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(380.), px(128.)), cx);
+        let bounds = Bounds::centered(None, size(u(380.), u(128.)), cx);
         let background = match backdrop() {
             "opaque" => WindowBackgroundAppearance::Opaque,
             "blur" => WindowBackgroundAppearance::Blurred,
