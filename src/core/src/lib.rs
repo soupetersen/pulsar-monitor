@@ -274,6 +274,9 @@ pub fn run() {
             open_pawnio_site
         ])
         .setup(move |app| {
+            // macOS: menu bar app, no Dock icon.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             build_tray(app)?;
             sampler::spawn(app.handle().clone(), view.clone());
             Ok(())

@@ -33,6 +33,10 @@ webview2-com = "0.39.1"
 windows-core = "0.62.2"
 libloading = "0.8"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+io-kit-sys = "0.5"
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
