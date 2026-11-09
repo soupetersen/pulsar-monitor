@@ -1,6 +1,6 @@
 # Pulsar
 
-A lightweight desktop widget that shows CPU, GPU, RAM, network and disk usage on Windows, Linux and macOS. Built with Tauri 2 (Rust) and Svelte.
+A lightweight desktop widget that shows CPU, GPU, RAM, network and disk usage on Windows, Linux and macOS. Written in Rust, with a native UI drawn on the GPU by [gpui](https://www.gpui.rs/) (no WebView).
 
 <p align="center">
   <img src="docs/screenshots/compact-dark.png" alt="Pulsar compact view, dark theme" width="420">
@@ -14,7 +14,7 @@ A lightweight desktop widget that shows CPU, GPU, RAM, network and disk usage on
 
 - **Compact mode:** rings for CPU (with temperature or power), GPU (with temperature), RAM and VRAM.
 - **Expanded mode:** history charts, per-thread usage, CPU temperature, power and clock, GPU details (temperature, power, VRAM, fan), network, disk, and the top processes by CPU, GPU or RAM, one click away.
-- **Themes:** dark and light (sun/moon button), on top of the system backdrop (Mica on Windows 11, vibrancy on macOS).
+- **Themes:** dark and light (sun/moon button), on top of the system backdrop (acrylic on Windows 11, vibrancy on macOS).
 - **Tray / menu bar icon:** click to show or hide the widget. The menu has "Always on top", "Start at login" and "Quit" (plus "CPU temperature" on Windows).
 - **Languages:** English, or Portuguese when the system is set to Portuguese.
 
@@ -38,9 +38,9 @@ Windows is the main target and is tested on real hardware. Linux and macOS build
 
 Download the file for your system from the [Releases](../../releases) page, or the latest build from the [Actions](../../actions) tab:
 
-- **Windows:** `Pulsar_x.y.z_x64-setup.exe`. Installs for the current user, so no admin rights are needed. Requires the WebView2 runtime, which ships with Windows 11.
-- **Linux:** `.deb` (Debian, Ubuntu), `.rpm` (Fedora, openSUSE) or `.AppImage` (any distribution). The `.deb` and `.rpm` open in the system's software installer with a double click. On GNOME without the AppIndicator extension (Fedora's default), the tray icon doesn't show; the widget still works, and opening Pulsar again brings it back after it's hidden.
-- **macOS:** `Pulsar_x.y.z_aarch64.dmg` (Apple Silicon) or `Pulsar_x.y.z_x64.dmg` (Intel). The app isn't signed yet, so the first time open it with right click › Open.
+- **Windows:** `Pulsar_x.y.z_x64-setup.exe`. Installs for the current user, so no admin rights are needed.
+- **Linux:** `.deb` (Debian, Ubuntu), `.rpm` (Fedora, openSUSE) or `.AppImage` (any distribution). The `.deb` and `.rpm` open in the system's software installer with a double click. Pulsar draws with Vulkan, so it needs a Vulkan driver (Mesa's, or the NVIDIA driver), which desktop distributions install by default. On GNOME without the AppIndicator extension (Fedora's default), the tray icon doesn't show; the widget still works, and opening Pulsar again brings it back after it's hidden.
+- **macOS:** `Pulsar_x.y.z_aarch64.dmg` (Apple Silicon) or `Pulsar_x.y.z_x86_64.dmg` (Intel). The app isn't signed yet, so the first time open it with right click › Open.
 
 ### CPU temperature on Windows (AMD Ryzen, Intel Core)
 
@@ -59,40 +59,46 @@ Since 2020 the kernel lets only root read the CPU energy counter (RAPL), because
 ## Build
 
 ```sh
-npm install
-npm run tauri dev       # development
-npm run tauri build     # installer for the current system in src/core/target/release/bundle
+cargo run                 # development
+cargo build --release     # target/release/pulsar(.exe)
+packaging/package.sh target/release/pulsar dist   # installers for this system, in dist/
 ```
 
-On Linux, install the WebKitGTK and tray dependencies first (Debian/Ubuntu):
+On Linux, install the build dependencies first (Debian/Ubuntu):
 
 ```sh
-sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+sudo apt install libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev \
+  libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev libfontconfig-dev libfreetype-dev
 ```
+
+Packaging needs `makensis` (NSIS) on Windows, and `dpkg-deb` and `rpmbuild` on Linux.
 
 ## Releasing
 
 ```sh
-npm run release -- patch                       # 0.3.0 -> 0.3.1, all platforms
-npm run release -- minor --platforms windows   # only the Windows installer
-npm run release -- 1.0.0 --platforms windows,linux
-npm run release -- patch --dry-run             # show what would happen
+scripts/release.sh patch                        # 0.3.0 -> 0.3.1, all platforms
+scripts/release.sh minor --platforms windows    # only the Windows installer
+scripts/release.sh 1.0.0 --platforms windows,linux
+scripts/release.sh patch --dry-run              # show what would happen
 ```
 
-Pulsar updates itself: it checks the latest published release shortly after starting, every hour and when the widget is shown again, and shows an update icon when a newer version exists. Clicking it downloads, installs and restarts. Updates are signed; the release workflow signs them with the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets, and the app only accepts packages signed with that key (its public half is in `tauri.conf.json`). Losing the private key means installed copies can no longer update, so keep a backup of it.
+Pulsar updates itself: it checks the latest published release shortly after starting, every hour and when the widget is shown again, and shows an update icon when a newer version exists. Clicking it downloads, installs and restarts. Updates are signed with minisign; the release workflow signs them with the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets (the key of the Tauri versions, so those update to this one), and the app only accepts packages signed with that key (its public half is in `src/shell/updater.rs`). Losing the private key means installed copies can no longer update, so keep a backup of it.
 
-The command bumps the version in `package.json`, `package-lock.json`, `tauri.conf.json`, `Cargo.toml` and `Cargo.lock`, commits `Release x.y.z`, tags `vx.y.z`, pushes both, and starts the Release workflow. The workflow builds the installers of the chosen platforms and attaches them to a draft release, which is published after a quick look (`gh release edit vx.y.z --draft=false`). Regular commits only run the Build workflow.
+The script bumps the version in `Cargo.toml` and `Cargo.lock`, commits `Release x.y.z`, tags `vx.y.z`, pushes both, and starts the Release workflow. The workflow builds the installers of the chosen platforms and attaches them to a draft release, which is published after a quick look (`gh release edit vx.y.z --draft=false`). Regular commits only run the Build workflow.
 
 ## Project layout
 
 ```
 src/
-├── ui/                        Svelte interface: routes, components, styles
-└── core/                      Rust (Tauri): window, tray, updater
-    └── src/monitor/           data collection, independent of the UI
-        ├── sampler.rs         collects everything once per second
-        ├── platform/          per-OS data: windows.rs, linux.rs, macos.rs
-        └── cpu_sensor.rs      CPU temperature helper (Windows)
+├── main.rs                    entry point (and the CPU temperature helper's)
+├── ui/                        gpui views: compact and expanded, theme, strings
+├── shell/                     window, tray, single instance, start at login,
+│                              settings, updater
+└── core/                      data collection, independent of the UI
+    ├── sampler.rs             collects everything once per second
+    ├── platform/              per-OS data: windows.rs, linux.rs, macos.rs
+    └── cpu_sensor.rs          CPU temperature helper (Windows)
+packaging/                     installers: NSIS, .app/dmg, deb, rpm, AppImage
 ```
 
 ## Data sources
@@ -110,26 +116,24 @@ src/
 | CPU temperature (macOS) | System sensors through `sysinfo` |
 | GPU (macOS) | IOKit `IOAccelerator` performance statistics |
 
-The sampler (`src/core/src/monitor/sampler.rs`) runs once per second and only collects what is on screen:
+The sampler (`src/core/sampler.rs`) runs once per second and only collects what is on screen:
 - **Compact mode:** totals only.
 - **Process list open:** that list's processes too.
-- **Hidden in the tray:** nothing at all, and on Windows the WebView switches to its low-memory mode.
+- **Hidden in the tray:** nothing at all.
 
 ## Performance notes
 
-- Value transitions use `steps(8)` instead of smooth easing. With continuous transitions the WebView repainted at 60–144 fps after every update, which cost about 25% of a core on a 4K display. With steps it costs about 3%.
-- The window is sized in physical pixels from the WebView's own `devicePixelRatio`, which can differ from the window scale factor on mixed-DPI multi-monitor setups.
+- Value changes animate in 8 discrete steps over 0.4 s: it reads as motion while redrawing only 8 times per update.
+- The window is redrawn only when something changes (a new sample, a hover, an animation step), and resized only when its content's size or the screen scale changes.
 
 Measured on Windows 11 with a Ryzen 7 9800X3D and an RTX 4080 SUPER on a 4K display:
 
-| State | CPU (of all threads) | Private memory |
+| State | CPU (of all threads) | Memory (private working set) |
 |---|---|---|
-| Compact | ~0.2% | ~200 MB |
-| Expanded with the GPU process list open | ~0.4–0.6% | ~240 MB |
-| Hidden in the tray | ~0% | ~220 MB |
+| Compact | ~0.07–0.1% | ~50 MB |
 
-Most of the memory belongs to WebView2. The Rust process itself uses about 35 MB. On Linux the whole app uses around 100 MB; WebKitGTK runs with its smallest cache model and without WebGL, Web Audio or media streams, which the widget doesn't need.
+About 20 MB of it is NVIDIA's NVML library, loaded only when an NVIDIA GPU is present. On Fedora the app uses about 47 MB. The Tauri versions (up to 0.4) used about 300 MB on Windows, most of it in WebView2, and 100 MB on Linux.
 
 ## Third-party
 
-`src/core/resources/pawnio/AMDFamily17.bin` and `IntelMSR.bin` are signed modules from [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules), licensed under LGPL-2.1 (see `COPYING-LGPL-2.1` next to it).
+`assets/pawnio/AMDFamily17.bin` and `IntelMSR.bin` are signed modules from [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules), licensed under LGPL-2.1 (see `COPYING-LGPL-2.1` next to it).
