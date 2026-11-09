@@ -34,9 +34,13 @@ export interface GpuStats {
   tempC: number | null;
   powerW: number | null;
   powerLimitW: number | null;
+  /** Power as % of the adapter maximum (non-NVIDIA GPUs). */
+  powerPct: number | null;
   vramUsed: number | null;
   vramTotal: number | null;
   fanPct: number | null;
+  /** Fan speed in RPM (non-NVIDIA GPUs). */
+  fanRpm: number | null;
   clockMhz: number | null;
 }
 

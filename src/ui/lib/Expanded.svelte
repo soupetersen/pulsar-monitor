@@ -151,9 +151,9 @@
         </div>
         <div class="stats">
           <div><span class="muted small">{t.temp}</span><b>{g.tempC != null ? `${g.tempC}°C` : "—"}</b></div>
-          <div><span class="muted small">{t.power}</span><b>{g.powerW != null ? `${Math.round(g.powerW)} W` : "—"}</b></div>
-          <div><span class="muted small">VRAM</span><b>{g.vramUsed != null && g.vramTotal ? `${f1(g.vramUsed / GB)} / ${Math.round(g.vramTotal / GB)} GB` : "—"}</b></div>
-          <div><span class="muted small">{t.fan}</span><b>{g.fanPct != null ? `${g.fanPct}%` : "—"}</b></div>
+          <div><span class="muted small">{t.power}</span><b>{g.powerW != null ? `${Math.round(g.powerW)} W` : g.powerPct != null ? `${Math.round(g.powerPct)}%` : "—"}</b></div>
+          <div><span class="muted small">VRAM</span><b>{g.vramUsed != null && g.vramTotal ? `${f1(g.vramUsed / GB)} / ${g.vramTotal >= 10 * GB ? Math.round(g.vramTotal / GB) : f1(g.vramTotal / GB)} GB` : "—"}</b></div>
+          <div><span class="muted small">{t.fan}</span><b>{g.fanPct != null ? `${g.fanPct}%` : g.fanRpm != null ? `${g.fanRpm} rpm` : "—"}</b></div>
         </div>
         {@render procsToggle("gpu")}
       </section>

@@ -77,9 +77,13 @@ struct GpuStats {
     temp_c: Option<u32>,
     power_w: Option<f32>,
     power_limit_w: Option<f32>,
+    /// Power as a percentage of the adapter's maximum (non-NVIDIA GPUs).
+    power_pct: Option<f32>,
     vram_used: Option<u64>,
     vram_total: Option<u64>,
     fan_pct: Option<u32>,
+    /// Fan speed in RPM (non-NVIDIA GPUs).
+    fan_rpm: Option<u32>,
     clock_mhz: Option<u32>,
 }
 
@@ -132,12 +136,25 @@ impl BaseCounters {
     }
 }
 
-/// Per-process GPU counters. Enumerating GPU engines is relatively expensive,
-/// so this only exists while the GPU panel is open (or when there is no NVML).
+/// GPU counters from PDH. Enumerating GPU engines is relatively expensive, so
+/// this only exists while the GPU panel is open, or when the GPU isn't read
+/// through NVML (then it provides the usage and VRAM of the adapter).
 struct GpuCounters {
     query: Query,
     engine: Counter,
     memory: Option<Counter>,
+    adapter_memory: Option<Counter>,
+}
+
+struct GpuSample {
+    /// GPU % per process (busiest engine type).
+    per_pid: HashMap<u32, f32>,
+    /// Dedicated VRAM bytes per process.
+    vram_per_pid: HashMap<u32, u64>,
+    /// Overall GPU % per adapter LUID ("0xHIGH_0xLOW").
+    usage_per_luid: HashMap<String, f32>,
+    /// Dedicated VRAM in use per adapter LUID.
+    vram_per_luid: HashMap<String, u64>,
 }
 
 impl GpuCounters {
@@ -145,12 +162,12 @@ impl GpuCounters {
         let query = Query::new()?;
         let engine = query.add(r"\GPU Engine(*)\Utilization Percentage")?;
         let memory = query.add(r"\GPU Process Memory(*)\Dedicated Usage");
+        let adapter_memory = query.add(r"\GPU Adapter Memory(*)\Dedicated Usage");
         query.collect();
-        Some(Self { query, engine, memory })
+        Some(Self { query, engine, memory, adapter_memory })
     }
 
-    /// Returns (per-pid GPU %, per-pid dedicated VRAM bytes, overall GPU % estimate).
-    fn sample(&self) -> (HashMap<u32, f32>, HashMap<u32, u64>, f32) {
+    fn sample(&self) -> GpuSample {
         self.query.collect();
 
         // Sum engine instances per (pid, adapter, engine type), then take the
@@ -168,17 +185,32 @@ impl GpuCounters {
             *e = e.max(value as f32);
             *per_type.entry((luid, engtype)).or_default() += value;
         }
-        let overall = per_type.values().cloned().fold(0.0, f64::max).min(100.0) as f32;
+        // Adapter usage = its busiest engine type, like Task Manager.
+        let mut usage_per_luid: HashMap<String, f32> = HashMap::new();
+        for ((luid, _), value) in per_type {
+            let e = usage_per_luid.entry(luid).or_default();
+            *e = e.max(value.min(100.0) as f32);
+        }
 
-        let mut vram: HashMap<u32, u64> = HashMap::new();
+        let mut vram_per_pid: HashMap<u32, u64> = HashMap::new();
         if let Some(mem) = &self.memory {
             for (name, value) in mem.array() {
                 if let Some(pid) = parse_pid(&name) {
-                    *vram.entry(pid).or_default() += value as u64;
+                    *vram_per_pid.entry(pid).or_default() += value as u64;
                 }
             }
         }
-        (per_pid, vram, overall)
+
+        // "luid_0x00000000_0x0000D1B5_phys_0"
+        let mut vram_per_luid: HashMap<String, u64> = HashMap::new();
+        if let Some(mem) = &self.adapter_memory {
+            for (name, value) in mem.array() {
+                if let Some(luid) = name.strip_prefix("luid_").and_then(|s| s.split("_phys").next()) {
+                    *vram_per_luid.entry(luid.to_string()).or_default() += value as u64;
+                }
+            }
+        }
+        GpuSample { per_pid, vram_per_pid, usage_per_luid, vram_per_luid }
     }
 }
 
@@ -209,7 +241,13 @@ fn run(app: AppHandle, view: SharedView) {
     let ncpu = sys.cpus().len().max(1) as f32;
     let host = System::host_name().unwrap_or_default();
 
-    let nv = NvGpu::new();
+    // NVIDIA as the main GPU: NVML (more detail). Otherwise, or when PULSAR_GPU
+    // picks an adapter by name: the vendor-neutral D3DKMT path.
+    let kmt = crate::gpu_kmt::main_adapter();
+    let prefer_kmt = std::env::var_os("PULSAR_GPU").is_some()
+        || kmt.as_ref().is_some_and(|a| !crate::gpu_kmt::is_nvidia(&a.name));
+    let nv = if prefer_kmt { None } else { NvGpu::new() };
+    let kmt = if nv.is_some() { None } else { kmt };
     let base = BaseCounters::new();
     let mut gpu_counters: Option<GpuCounters> = None;
     let mut networks = Networks::new_with_refreshed_list().ok();
@@ -282,21 +320,30 @@ fn run(app: AppHandle, view: SharedView) {
                 temp_c: s.temp_c,
                 power_w: s.power_w,
                 power_limit_w: s.power_limit_w,
+                power_pct: None,
                 vram_used: Some(s.vram_used),
                 vram_total: Some(s.vram_total),
                 fan_pct: s.fan_pct,
+                fan_rpm: None,
                 clock_mhz: s.clock_mhz,
             }),
-            _ => gpu_sample.as_ref().map(|(_, _, overall)| GpuStats {
-                name: "GPU".into(),
-                usage: *overall,
-                temp_c: None,
-                power_w: None,
-                power_limit_w: None,
-                vram_used: None,
-                vram_total: None,
-                fan_pct: None,
-                clock_mhz: None,
+            // AMD, Intel (or NVIDIA without NVML): D3DKMT + PDH counters of that adapter.
+            _ => kmt.as_ref().map(|a| {
+                let perf = a.perf();
+                let sample = gpu_sample.as_ref();
+                GpuStats {
+                    name: a.name.trim_start_matches("NVIDIA ").trim_start_matches("GeForce ").to_string(),
+                    usage: sample.and_then(|s| s.usage_per_luid.get(&a.luid)).copied().unwrap_or(0.0),
+                    temp_c: perf.temp_c.map(|t| t.round() as u32),
+                    power_w: None,
+                    power_limit_w: None,
+                    power_pct: perf.power_pct,
+                    vram_used: sample.and_then(|s| s.vram_per_luid.get(&a.luid)).copied(),
+                    vram_total: (a.vram_total > 0).then_some(a.vram_total),
+                    fan_pct: None,
+                    fan_rpm: perf.fan_rpm,
+                    clock_mhz: None,
+                }
             }),
         };
 
@@ -356,7 +403,7 @@ fn top_processes(
     sys: &System,
     panel: Panel,
     ncpu: f32,
-    gpu: Option<&(HashMap<u32, f32>, HashMap<u32, u64>, f32)>,
+    gpu: Option<&GpuSample>,
 ) -> Vec<ProcStats> {
     let mut groups: HashMap<String, ProcStats> = HashMap::new();
     for (pid, p) in sys.processes() {
@@ -369,9 +416,9 @@ fn top_processes(
         g.count += 1;
         g.cpu += p.cpu_usage() / ncpu;
         g.mem += p.memory();
-        if let Some((per_pid, vram, _)) = gpu {
-            g.gpu += per_pid.get(&pid).copied().unwrap_or(0.0);
-            g.vram += vram.get(&pid).copied().unwrap_or(0);
+        if let Some(s) = gpu {
+            g.gpu += s.per_pid.get(&pid).copied().unwrap_or(0.0);
+            g.vram += s.vram_per_pid.get(&pid).copied().unwrap_or(0);
         }
     }
     let mut list: Vec<ProcStats> = groups.into_values().collect();

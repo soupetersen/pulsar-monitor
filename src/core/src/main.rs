@@ -11,6 +11,7 @@ fn main() {
             std::process::exit(cpu_sensor::install(args.get(2).map(String::as_str).unwrap_or_default()))
         }
         Some(cpu_sensor::DISABLE_ARG) => std::process::exit(cpu_sensor::uninstall()),
+        Some("--gpu-info") => pulsar_lib::print_gpu_info(),
         _ => pulsar_lib::run(),
     }
 }

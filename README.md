@@ -53,6 +53,7 @@ src/
 |---|---|
 | CPU, RAM, processes, network | `sysinfo` crate |
 | NVIDIA GPU (usage, temperature, power, VRAM, fan, clock) | NVML via `nvml-wrapper` (uses the driver's `nvml.dll`) |
+| AMD and Intel GPUs (temperature, power %, fan RPM, VRAM) | Windows D3DKMT adapter performance data (the same source Task Manager uses) |
 | Effective CPU clock, disk activity, per-process GPU usage | Windows PDH performance counters (the same source Task Manager uses) |
 | CPU package power | Windows "Energy Meter" counters (RAPL), no driver needed |
 | CPU temperature (AMD, Intel) | PawnIO driver with its signed `AMDFamily17` module (Tctl register) or `IntelMSR` module (package thermal status) |
