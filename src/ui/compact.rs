@@ -1,7 +1,7 @@
 //! The compact view: the host name, the header buttons and one ring per
 //! resource. Clicking a ring opens the expanded view on its processes.
 
-use gpui::{Context, Div, MouseButton, Stateful, div, prelude::*};
+use gpui::{Context, Div, MouseButton, Stateful, WindowControlArea, div, prelude::*};
 
 use super::assets::icon;
 use super::format::{GB, f1};
@@ -96,6 +96,9 @@ pub fn render(stats: Option<&Stats>, anim: Anim, theme: Theme, cx: &mut Context<
                 .pl(u(2.))
                 .text_size(u(12.))
                 .text_color(theme.muted)
+                // Windows moves the window itself over a caption area; elsewhere
+                // gpui asks the window manager to start a move.
+                .window_control_area(WindowControlArea::Drag)
                 .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
                 .child(div().size(u(7.)).rounded_full().bg(theme.accent))
                 .child(host),

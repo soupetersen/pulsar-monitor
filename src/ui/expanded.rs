@@ -1,7 +1,7 @@
 //! The expanded view: a section per resource with its history and details,
 //! the process lists, network and disk, and the version.
 
-use gpui::{Context, Div, FontWeight, MouseButton, SharedString, Stateful, Transformation, div, prelude::*, radians, relative, svg};
+use gpui::{Context, Div, FontWeight, MouseButton, SharedString, Stateful, Transformation, WindowControlArea, div, prelude::*, radians, relative, svg};
 
 use super::assets::icon;
 use super::format::{GB, bytes, f1, f2, pct, rate, short_cpu_name, uptime};
@@ -224,6 +224,9 @@ fn header(w: &Widget, stats: Option<&Stats>, on_top: Option<bool>, theme: Theme,
                 .flex()
                 .flex_col()
                 .gap(u(1.))
+                // Windows moves the window itself over a caption area; elsewhere
+                // gpui asks the window manager to start a move.
+                .window_control_area(WindowControlArea::Drag)
                 .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
                 .child(div().text_size(u(15.)).font_weight(FontWeight::SEMIBOLD).child(t().system))
                 .child(small(up, theme)),
