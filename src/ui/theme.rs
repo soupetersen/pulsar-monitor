@@ -21,6 +21,8 @@ pub struct Theme {
     pub track: Rgba,
     pub hover: Rgba,
     pub accent: Rgba,
+    /// Tooltip background: opaque, since it floats over the content.
+    pub tip: Rgba,
 }
 
 impl Theme {
@@ -38,6 +40,7 @@ impl Theme {
                 track: rgba(0xffffff1f),
                 hover: rgba(0xffffff17),
                 accent: rgb(0x4cc2ff),
+                tip: rgb(0x2b2c31),
             },
             Mode::Light => Theme {
                 text: rgb(0x111111),
@@ -48,6 +51,7 @@ impl Theme {
                 track: rgba(0x00000017),
                 hover: rgba(0x0000000f),
                 accent: rgb(0x111111),
+                tip: rgb(0xffffff),
             },
         }
     }

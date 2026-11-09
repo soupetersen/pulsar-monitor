@@ -22,7 +22,8 @@ use gpui::{
 };
 
 use crate::monitor::{self, Panel, SharedView, Stats, View};
-use crate::ui::{Widget, theme::u};
+use crate::ui::Widget;
+use crate::ui::theme::{Mode, u};
 use settings::Settings;
 
 pub const APP_ID: &str = "com.petersen.pulsar";
@@ -30,6 +31,7 @@ pub const APP_ID: &str = "com.petersen.pulsar";
 pub enum Action {
     Toggle,
     Show,
+    Hide,
     ToggleOnTop,
     ToggleAutostart,
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -40,9 +42,29 @@ pub enum Action {
     Quit,
 }
 
-/// The latest sample. Views observe it and redraw when it changes.
+/// Samples kept for the usage history graphs.
+const HISTORY: usize = 30;
+
+/// The latest sample and the CPU and GPU usage history. Views observe it
+/// and redraw when it changes.
 pub struct StatsStore {
     pub latest: Option<Stats>,
+    pub cpu_hist: Vec<f32>,
+    pub gpu_hist: Vec<f32>,
+}
+
+impl StatsStore {
+    fn push(&mut self, sample: Stats) {
+        let push = |list: &mut Vec<f32>, v: f32| {
+            if list.len() >= HISTORY {
+                list.remove(0);
+            }
+            list.push(v);
+        };
+        push(&mut self.cpu_hist, sample.cpu.usage);
+        push(&mut self.gpu_hist, sample.gpu.as_ref().map_or(0.0, |g| g.usage));
+        self.latest = Some(sample);
+    }
 }
 
 struct Shell {
@@ -72,9 +94,9 @@ pub fn run() {
         let _ = stats_tx.unbounded_send(stats);
     });
 
-    Application::new().run(move |cx: &mut App| {
+    Application::new().with_assets(crate::ui::Assets).run(move |cx: &mut App| {
         let settings = Settings::load();
-        let stats = cx.new(|_| StatsStore { latest: None });
+        let stats = cx.new(|_| StatsStore { latest: None, cpu_hist: Vec::new(), gpu_hist: Vec::new() });
         let tray = tray::Tray::new(actions.clone(), checks(&settings));
         cx.set_global(Shell { view, settings, stats: stats.clone(), window: None, visible: true, tray, actions });
         open_window(cx);
@@ -82,7 +104,7 @@ pub fn run() {
         cx.spawn(async move |cx| {
             while let Some(sample) = stats_rx.next().await {
                 let _ = stats.update(cx, |store, cx| {
-                    store.latest = Some(sample);
+                    store.push(sample);
                     cx.notify();
                 });
             }
@@ -130,13 +152,18 @@ fn handle(action: Action, cx: &mut App) {
             set_visible(cx, !visible);
         }
         Action::Show => set_visible(cx, true),
+        Action::Hide => set_visible(cx, false),
         Action::ToggleOnTop => {
             let shell = cx.global_mut::<Shell>();
             shell.settings.on_top = !shell.settings.on_top;
             shell.settings.save();
             let on = shell.settings.on_top;
             if let Some(handle) = shell.window {
-                let _ = handle.update(cx, |_, window, _| window::set_on_top(window, on));
+                let _ = handle.update(cx, |_, window, cx| {
+                    window::set_on_top(window, on);
+                    // The pin button shows the state.
+                    cx.notify();
+                });
             }
             refresh_tray(cx);
         }
@@ -171,7 +198,8 @@ fn open_window(cx: &mut App) {
     let on_top = shell.settings.on_top;
     let mode = shell.settings.theme;
     let stats = shell.stats.clone();
-    let win_size = size(u(380.), u(128.));
+    // The widget resizes the window to its content on the first frame.
+    let win_size = size(u(372.), u(128.));
     let bounds = match shell.settings.position {
         Some((x, y)) => Bounds { origin: point(gpui::px(x), gpui::px(y)), size: win_size },
         None => Bounds::centered(None, win_size, cx),
@@ -191,7 +219,7 @@ fn open_window(cx: &mut App) {
     };
     let handle = cx
         .open_window(options, |window, cx| {
-            window::apply_native_style(window, on_top);
+            window::apply_native_style(window, on_top, mode == Mode::Dark);
             cx.new(|cx| Widget::new(stats, mode, cx))
         })
         .expect("failed to open the window");
@@ -230,4 +258,47 @@ fn set_visible(cx: &mut App, visible: bool) {
     } else {
         let _ = handle.update(cx, |_, window, _| window::hide(window));
     }
+}
+
+// Called by the views. They run inside a window update, so anything that
+// touches the window again goes through the action channel.
+
+fn send(action: Action, cx: &App) {
+    let _ = cx.global::<Shell>().actions.unbounded_send(action);
+}
+
+pub fn hide(cx: &App) {
+    send(Action::Hide, cx);
+}
+
+pub fn toggle_on_top(cx: &App) {
+    send(Action::ToggleOnTop, cx);
+}
+
+pub fn on_top(cx: &App) -> bool {
+    cx.global::<Shell>().settings.on_top
+}
+
+pub fn set_theme(mode: Mode, window: &mut gpui::Window, cx: &mut App) {
+    let shell = cx.global_mut::<Shell>();
+    shell.settings.theme = mode;
+    shell.settings.save();
+    window::set_dark(window, mode == Mode::Dark);
+}
+
+/// Resizes the window to the widget's content, keeping it on screen.
+pub fn fit_window(size: gpui::Size<gpui::Pixels>, window: &mut gpui::Window, cx: &App) {
+    window::fit(window, size, cx);
+}
+
+/// Whether the widget is expanded, and its open process list.
+pub fn view_state(cx: &App) -> (bool, Panel) {
+    let view = cx.global::<Shell>().view.lock().unwrap();
+    (view.expanded, view.panel)
+}
+
+pub fn set_view(expanded: bool, panel: Panel, cx: &App) {
+    let mut view = cx.global::<Shell>().view.lock().unwrap();
+    view.expanded = expanded;
+    view.panel = panel;
 }
