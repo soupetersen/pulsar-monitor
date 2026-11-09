@@ -84,7 +84,8 @@ Recommends: mesa-vulkan-drivers
 Description: Lightweight system monitor desktop widget (CPU, GPU, RAM)
 EOF
   cat "$deb/DEBIAN/control"
-  dpkg-deb --root-owner-group --build "$deb" "$out/Pulsar_${version}_amd64.deb"
+  # xz: dpkg before 1.21.18 (Debian 11) can't read the zstd default of newer ones.
+  dpkg-deb -Zxz --root-owner-group --build "$deb" "$out/Pulsar_${version}_amd64.deb"
 
   # rpm: rpmbuild finds the libraries it needs (as sonames, which Fedora
   # and openSUSE provide) by itself.

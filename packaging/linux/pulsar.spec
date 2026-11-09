@@ -1,6 +1,8 @@
 # Built by packaging/package.sh, which fills in the version and passes the
 # install tree as %{tree}.
 %global debug_package %{nil}
+# Same file list as the Tauri versions (no /usr/lib/.build-id links).
+%global _build_id_links none
 Name:           pulsar
 Version:        @VERSION@
 Release:        1
