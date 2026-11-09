@@ -71,16 +71,27 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run tauri build -- ${{ matrix.args }}
+      # Also builds the signed update packages (.sig next to each installer,
+      # plus the .app.tar.gz on macOS) that the in-app updater downloads.
+      - name: Build
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- ${{ matrix.args }} --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
       - uses: actions/upload-artifact@v4
         with:
           name: pulsar-${{ matrix.key }}
           path: |
             ${{ matrix.bundle }}/nsis/*.exe
+            ${{ matrix.bundle }}/nsis/*.exe.sig
             ${{ matrix.bundle }}/deb/*.deb
             ${{ matrix.bundle }}/appimage/*.AppImage
+            ${{ matrix.bundle }}/appimage/*.AppImage.sig
             ${{ matrix.bundle }}/dmg/*.dmg
+            ${{ matrix.bundle }}/macos/*.app.tar.gz
+            ${{ matrix.bundle }}/macos/*.app.tar.gz.sig
           if-no-files-found: error
 
   release:
@@ -99,8 +110,22 @@ jobs:
           TAG: ${{ inputs.tag }}
           REPO: ${{ github.repository }}
         run: |
-          # Artifacts keep their bundle folders (nsis/, deb/, appimage/, dmg/).
-          mapfile -t files < <(find dist -type f)
+          # latest.json: what the in-app updater reads from the latest published release.
+          base="https://github.com/$REPO/releases/download/$TAG"
+          entry() { # <platform key> <file>
+            [ -n "$2" ] && [ -f "$2.sig" ] || return 0
+            jq -n --arg k "$1" --arg s "$(cat "$2.sig")" --arg u "$base/$(basename "$2")" '{($k): {signature: $s, url: $u}}'
+          }
+          windows=$(find dist -name '*-setup.exe' | head -1)
+          linux=$(find dist -name '*.AppImage' | head -1)
+          mac=$(find dist -name '*.app.tar.gz' | head -1)
+          platforms=$({ entry windows-x86_64 "$windows"; entry linux-x86_64 "$linux"; entry darwin-aarch64 "$mac"; entry darwin-x86_64 "$mac"; } | jq -s 'add // {}')
+          jq -n --arg v "${TAG#v}" --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson p "$platforms" \
+            '{version: $v, notes: "", pub_date: $d, platforms: $p}' > dist/latest.json
+          cat dist/latest.json
+
+          # Artifacts keep their bundle folders (nsis/, deb/, ...); signatures live in latest.json.
+          mapfile -t files < <(find dist -type f ! -name '*.sig')
           printf '%s\n' "${files[@]}"
           if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
             gh release upload "$TAG" "${files[@]}" --repo "$REPO" --clobber

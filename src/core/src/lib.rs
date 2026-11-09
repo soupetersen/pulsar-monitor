@@ -7,6 +7,7 @@ mod gpu_kmt;
 mod pdh;
 mod platform;
 mod sampler;
+mod updater;
 
 use std::sync::{Arc, Mutex};
 
@@ -265,6 +266,8 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| set_visible(app, true)))
         .plugin(tauri_plugin_window_state::Builder::new().with_state_flags(StateFlags::POSITION).build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::Pending::default())
         .manage(view.clone())
         .invoke_handler(tauri::generate_handler![
             set_view,
@@ -273,7 +276,9 @@ pub fn run() {
             set_on_top,
             cpu_temp_status,
             set_cpu_temp,
-            open_pawnio_site
+            open_pawnio_site,
+            updater::update_status,
+            updater::install_update
         ])
         .setup(move |app| {
             // macOS: menu bar app, no Dock icon.
@@ -281,6 +286,7 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             build_tray(app)?;
             sampler::spawn(app.handle().clone(), view.clone());
+            updater::spawn_checks(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {

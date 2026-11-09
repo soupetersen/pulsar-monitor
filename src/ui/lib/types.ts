@@ -63,3 +63,11 @@ export interface Stats {
   procs: Proc[] | null;
   procsFor: Panel | null;
 }
+
+/** A newer version is available (see UpdateButton). */
+export interface UpdateState {
+  version: string;
+  busy: boolean;
+  failed: boolean;
+  onclick: () => void;
+}

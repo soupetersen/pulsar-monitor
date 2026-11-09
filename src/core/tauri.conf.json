@@ -33,6 +33,13 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlGRkVEQkU3MEZGOEZDMEMKUldRTS9QZ1A1OXYrbnk1Q0JVUmdJT0x3T2xWQVdLTnZubnAzYktIOGRZaHJmREducVZSQlpHWWYK",
+      "endpoints": ["https://github.com/soupetersen/pulsar-monitor/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["deb", "appimage"],

@@ -24,6 +24,27 @@
   /** CPU temperature can be turned on but isn't yet: show the setup button. */
   let tempSetup = $derived(tempStatus?.supported && !tempStatus.enabled ? tempStatus : null);
 
+  // A newer version found by the updater (Rust side checks on startup and every few hours).
+  let updateVersion = $state<string | null>(null);
+  let updateBusy = $state(false);
+  let updateFailed = $state(false);
+  let update = $derived(
+    updateVersion ? { version: updateVersion, busy: updateBusy, failed: updateFailed, onclick: installUpdate } : null,
+  );
+
+  async function installUpdate() {
+    updateBusy = true;
+    updateFailed = false;
+    try {
+      // Downloads, installs and restarts the app.
+      await invoke("install_update");
+    } catch {
+      updateFailed = true;
+    } finally {
+      updateBusy = false;
+    }
+  }
+
   async function enableTemp() {
     if (!tempStatus) return;
     if (!tempStatus.pawnio) {
@@ -61,7 +82,9 @@
       }),
       listen<boolean>("on-top-changed", (e) => (onTop = e.payload)),
       listen<CpuTempStatus>("cpu-temp-changed", (e) => (tempStatus = e.payload)),
+      listen<{ version: string }>("update-available", (e) => (updateVersion = e.payload.version)),
     ];
+    invoke<{ version: string } | null>("update_status").then((u) => u && (updateVersion = u.version));
     invoke<boolean>("is_on_top").then((v) => (onTop = v));
     invoke<CpuTempStatus>("cpu_temp_status").then((s) => (tempStatus = s));
 
@@ -148,9 +171,10 @@
       {tempSetup}
       {tempBusy}
       onenabletemp={enableTemp}
+      {update}
     />
   {:else}
-    <Compact {stats} onexpand={expand} onhide={hide} {tempSetup} {tempBusy} onenabletemp={enableTemp} />
+    <Compact {stats} onexpand={expand} onhide={hide} {tempSetup} {tempBusy} onenabletemp={enableTemp} {update} />
   {/if}
 </div>
 

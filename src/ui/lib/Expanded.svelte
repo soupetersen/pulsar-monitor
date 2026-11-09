@@ -6,6 +6,8 @@
   import { bytes, f1, f2, GB, pct, rate, shortCpuName, uptime } from "./format";
   import { t } from "./i18n";
   import TempSetup from "./TempSetup.svelte";
+  import UpdateButton from "./UpdateButton.svelte";
+  import type { UpdateState } from "./types";
 
   let {
     stats,
@@ -21,6 +23,7 @@
     tempSetup,
     tempBusy,
     onenabletemp,
+    update,
   }: {
     stats: Stats | null;
     cpuHist: number[];
@@ -35,6 +38,7 @@
     tempSetup: CpuTempStatus | null;
     tempBusy: boolean;
     onenabletemp: () => void;
+    update: UpdateState | null;
   } = $props();
 
   const togglePanel = (p: Panel) => (panel = panel === p ? "none" : p);
@@ -84,6 +88,9 @@
       <span class="muted small">{stats ? t.uptime(uptime(stats.uptimeSecs)) : "…"}</span>
     </div>
     <div class="actions">
+      {#if update}
+        <UpdateButton {...update} />
+      {/if}
       <button class="icon-btn" aria-label={theme === "dark" ? t.toLight : t.toDark} title={t.changeTheme} onclick={ontheme}>
         {#if theme === "dark"}
           <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><line x1="12" y1="2" x2="12" y2="4" /><line x1="12" y1="20" x2="12" y2="22" /><line x1="4.9" y1="4.9" x2="6.3" y2="6.3" /><line x1="17.7" y1="17.7" x2="19.1" y2="19.1" /><line x1="2" y1="12" x2="4" y2="12" /><line x1="20" y1="12" x2="22" y2="12" /><line x1="4.9" y1="19.1" x2="6.3" y2="17.7" /><line x1="17.7" y1="6.3" x2="19.1" y2="4.9" /></svg>

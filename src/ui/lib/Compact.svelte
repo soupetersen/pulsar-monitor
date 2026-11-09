@@ -3,6 +3,8 @@
   import { f1, GB, pct } from "./format";
   import { t } from "./i18n";
   import TempSetup from "./TempSetup.svelte";
+  import UpdateButton from "./UpdateButton.svelte";
+  import type { UpdateState } from "./types";
 
   let {
     stats,
@@ -11,6 +13,7 @@
     tempSetup,
     tempBusy,
     onenabletemp,
+    update,
   }: {
     stats: Stats | null;
     onexpand: (p: Panel) => void;
@@ -18,6 +21,7 @@
     tempSetup: CpuTempStatus | null;
     tempBusy: boolean;
     onenabletemp: () => void;
+    update: UpdateState | null;
   } = $props();
 
   const C = 2 * Math.PI * 18;
@@ -65,6 +69,9 @@
   <header data-tauri-drag-region>
     <span class="host"><i class="dot"></i>{stats?.host ?? "…"}</span>
     <div class="actions">
+      {#if update}
+        <UpdateButton {...update} />
+      {/if}
       {#if tempSetup}
         <TempSetup status={tempSetup} busy={tempBusy} onclick={onenabletemp} />
       {/if}
