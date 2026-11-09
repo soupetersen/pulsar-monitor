@@ -2897,7 +2897,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "core-foundation 0.10.1",
  "io-kit-sys",

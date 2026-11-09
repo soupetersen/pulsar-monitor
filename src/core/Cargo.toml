@@ -1,6 +1,6 @@
 [package]
 name = "pulsar"
-version = "0.4.4"
+version = "0.4.5"
 description = "Lightweight system monitor desktop widget (CPU, GPU, RAM)"
 authors = ["Thiago Petersen"]
 edition = "2024"
