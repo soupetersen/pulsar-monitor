@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::sampler::{DiskStats, GpuStats};
+use crate::monitor::sampler::{DiskStats, GpuStats};
 
 #[cfg(windows)]
 mod windows;

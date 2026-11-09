@@ -6,10 +6,10 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use super::{Extras, GpuProcs, Want};
-use crate::cpu_sensor;
-use crate::gpu_kmt::{self, Adapter};
-use crate::pdh::{Counter, Query};
-use crate::sampler::{DiskStats, GpuStats};
+use crate::monitor::cpu_sensor;
+use crate::monitor::gpu_kmt::{self, Adapter};
+use crate::monitor::pdh::{Counter, Query};
+use crate::monitor::sampler::{DiskStats, GpuStats};
 
 pub struct Platform {
     base: Option<BaseCounters>,

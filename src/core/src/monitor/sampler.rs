@@ -1,9 +1,9 @@
-//! Background sampler: collects system stats once per second and emits them
-//! to the UI. It only gathers what the current view shows, so the compact
+//! Background sampler: collects system stats once per second and hands them
+//! to the UI through a callback. It only gathers what the current view shows, so the compact
 //! widget stays cheap and a hidden widget costs nothing.
 //!
 //! Everything `sysinfo` and NVML provide is read here on every platform;
-//! OS-specific extras come from `crate::platform`.
+//! OS-specific extras come from `crate::monitor::platform`.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -11,10 +11,9 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use sysinfo::{Networks, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
-use tauri::{AppHandle, Emitter};
 
-use crate::gpu::NvGpu;
-use crate::platform::{GpuProcs, Platform, Want};
+use crate::monitor::gpu::NvGpu;
+use crate::monitor::platform::{GpuProcs, Platform, Want};
 
 const TICK: Duration = Duration::from_secs(1);
 const FIRST_TICK: Duration = Duration::from_millis(300);
@@ -40,36 +39,36 @@ pub type SharedView = Arc<Mutex<View>>;
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct Stats {
-    host: String,
-    uptime_secs: u64,
-    cpu: CpuStats,
-    ram: RamStats,
-    gpu: Option<GpuStats>,
-    net: Option<NetStats>,
-    disk: Option<DiskStats>,
-    procs: Option<Vec<ProcStats>>,
-    procs_for: Option<Panel>,
+pub struct Stats {
+    pub host: String,
+    pub uptime_secs: u64,
+    pub cpu: CpuStats,
+    pub ram: RamStats,
+    pub gpu: Option<GpuStats>,
+    pub net: Option<NetStats>,
+    pub disk: Option<DiskStats>,
+    pub procs: Option<Vec<ProcStats>>,
+    pub procs_for: Option<Panel>,
 }
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct CpuStats {
-    name: String,
-    usage: f32,
-    clock_ghz: Option<f32>,
-    temp_c: Option<f32>,
-    power_w: Option<f32>,
-    threads: usize,
-    cores: Vec<f32>,
+pub struct CpuStats {
+    pub name: String,
+    pub usage: f32,
+    pub clock_ghz: Option<f32>,
+    pub temp_c: Option<f32>,
+    pub power_w: Option<f32>,
+    pub threads: usize,
+    pub cores: Vec<f32>,
 }
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct RamStats {
-    used: u64,
-    total: u64,
-    available: u64,
+pub struct RamStats {
+    pub used: u64,
+    pub total: u64,
+    pub available: u64,
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -92,9 +91,9 @@ pub struct GpuStats {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct NetStats {
-    rx_per_sec: f64,
-    tx_per_sec: f64,
+pub struct NetStats {
+    pub rx_per_sec: f64,
+    pub tx_per_sec: f64,
 }
 
 #[derive(Serialize, Clone)]
@@ -106,23 +105,25 @@ pub struct DiskStats {
 
 #[derive(Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
-struct ProcStats {
-    name: String,
-    count: u32,
-    cpu: f32,
-    mem: u64,
-    gpu: f32,
-    vram: u64,
+pub struct ProcStats {
+    pub name: String,
+    pub count: u32,
+    pub cpu: f32,
+    pub mem: u64,
+    pub gpu: f32,
+    pub vram: u64,
 }
 
-pub fn spawn(app: AppHandle, view: SharedView) {
+/// Starts the sampler thread. `on_stats` runs on that thread once per second
+/// while the widget is visible.
+pub fn spawn(view: SharedView, on_stats: impl FnMut(Stats) + Send + 'static) {
     std::thread::Builder::new()
         .name("sampler".into())
-        .spawn(move || run(app, view))
+        .spawn(move || run(view, on_stats))
         .expect("failed to start sampler thread");
 }
 
-fn run(app: AppHandle, view: SharedView) {
+fn run(view: SharedView, mut on_stats: impl FnMut(Stats)) {
     let Ok(mut sys) = System::new() else { return };
     sys.refresh_cpu_all();
     let cpu_name = sys.cpus().first().map(|c| c.brand().trim().to_string()).unwrap_or_default();
@@ -222,7 +223,7 @@ fn run(app: AppHandle, view: SharedView) {
             procs_for: procs.as_ref().map(|_| v.panel),
             procs,
         };
-        let _ = app.emit("stats", stats);
+        on_stats(stats);
     }
 }
 

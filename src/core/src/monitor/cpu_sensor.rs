@@ -52,12 +52,12 @@ const STALE_AFTER_MS: u64 = 5_000;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Signed PawnIO module for AMD family 17h–1Ah (Zen 1–5), LGPL-2.1.
-const AMD_MODULE: &[u8] = include_bytes!("../resources/pawnio/AMDFamily17.bin");
+const AMD_MODULE: &[u8] = include_bytes!("../../resources/pawnio/AMDFamily17.bin");
 /// SMN register THM_TCON_CUR_TMP: current Tctl.
 const SMN_THM_TCON_CUR_TMP: u64 = 0x0005_9800;
 
 /// Signed PawnIO module for Intel MSRs (read-only allowlist includes the thermal MSRs), LGPL-2.1.
-const INTEL_MODULE: &[u8] = include_bytes!("../resources/pawnio/IntelMSR.bin");
+const INTEL_MODULE: &[u8] = include_bytes!("../../resources/pawnio/IntelMSR.bin");
 /// MSR_TEMPERATURE_TARGET: bits 23:16 hold TjMax.
 const MSR_TEMPERATURE_TARGET: u64 = 0x1a2;
 /// IA32_PACKAGE_THERM_STATUS: bits 22:16 hold how far below TjMax the package is.
