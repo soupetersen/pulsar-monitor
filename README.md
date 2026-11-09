@@ -1,6 +1,6 @@
 # Pulsar
 
-A lightweight desktop widget for Windows 11 that shows CPU, GPU, RAM, network and disk usage. Built with Tauri 2 (Rust) and Svelte.
+A lightweight desktop widget that shows CPU, GPU, RAM, network and disk usage on Windows, Linux and macOS. Built with Tauri 2 (Rust) and Svelte.
 
 <p align="center">
   <img src="docs/screenshots/compact-dark.png" alt="Pulsar compact view, dark theme" width="420">
@@ -14,15 +14,35 @@ A lightweight desktop widget for Windows 11 that shows CPU, GPU, RAM, network an
 
 - **Compact mode:** rings for CPU (with temperature or power), GPU (with temperature), RAM and VRAM.
 - **Expanded mode:** history charts, per-thread usage, CPU temperature, power and clock, GPU details (temperature, power, VRAM, fan), network, disk, and the top processes by CPU, GPU or RAM, one click away.
-- **Themes:** dark and light (sun/moon button), on top of the Windows 11 Mica backdrop.
-- **Tray icon:** click to show or hide the widget. The menu has "Always on top", "Start with Windows", "CPU temperature" and "Quit".
-- **Languages:** English, or Portuguese when Windows is set to Portuguese.
+- **Themes:** dark and light (sun/moon button), on top of the system backdrop (Mica on Windows 11, vibrancy on macOS).
+- **Tray / menu bar icon:** click to show or hide the widget. The menu has "Always on top", "Start at login" and "Quit" (plus "CPU temperature" on Windows).
+- **Languages:** English, or Portuguese when the system is set to Portuguese.
+
+## Platform support
+
+| | Windows 10/11 | Linux | macOS |
+|---|---|---|---|
+| CPU, RAM, processes, network | ✅ | ✅ | ✅ |
+| CPU clock, disk activity | ✅ | ✅ | — |
+| CPU power | ✅ | ✅ when RAPL is readable (often root-only) | — |
+| CPU temperature | ✅ AMD and Intel, one-time setup (see below) | ✅ AMD and Intel, no setup | ✅ |
+| NVIDIA GPU (usage, temperature, power, VRAM, fan) | ✅ | ✅ | — |
+| AMD GPU | ✅ temperature, power %, fan, VRAM | ✅ usage, temperature, power, fan, VRAM | ✅ usage (Intel Macs) |
+| Intel GPU | ✅ temperature, power %, VRAM | — | ✅ usage |
+| Apple GPU | — | — | ✅ usage, memory in use |
+| Top processes by GPU | ✅ | — | — |
+
+Windows is the main target and is tested on real hardware. Linux and macOS builds are compiled on every push, but haven't been tested on real machines yet; reports are welcome.
 
 ## Install
 
-Download `Pulsar_x.y.z_x64-setup.exe` from the [Releases](../../releases) page and run it. It installs for the current user, so no admin rights are needed. It requires the WebView2 runtime, which ships with Windows 11.
+Download the file for your system from the [Releases](../../releases) page, or the latest build from the [Actions](../../actions) tab:
 
-### CPU temperature (AMD Ryzen, Intel Core)
+- **Windows:** `Pulsar_x.y.z_x64-setup.exe`. Installs for the current user, so no admin rights are needed. Requires the WebView2 runtime, which ships with Windows 11.
+- **Linux:** `.deb` (Debian, Ubuntu) or `.AppImage` (any distribution). The tray icon needs `libayatana-appindicator`.
+- **macOS:** `.dmg`. The app isn't signed yet, so the first time open it with right click › Open.
+
+### CPU temperature on Windows (AMD Ryzen, Intel Core)
 
 Windows doesn't expose the CPU temperature to regular programs. Pulsar reads it from the processor through the free, signed [PawnIO](https://pawnio.eu/) driver, which needs administrator rights.
 
@@ -30,45 +50,57 @@ When the temperature is off, a thermometer icon shows up in the widget. Click it
 
 The helper runs from a copy under `C:\Program Files\Pulsar`, which only administrators can modify. You can turn it off again from the tray menu.
 
+On Linux and macOS the temperature comes from the system sensors and needs no setup.
+
 ## Build
 
 ```sh
 npm install
-npm run tauri dev                       # development
-npm run tauri build -- --no-bundle      # src/core/target/release/pulsar.exe
-npm run tauri build                     # NSIS installer in src/core/target/release/bundle/nsis
+npm run tauri dev       # development
+npm run tauri build     # installer for the current system in src/core/target/release/bundle
+```
+
+On Linux, install the WebKitGTK and tray dependencies first (Debian/Ubuntu):
+
+```sh
+sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 ```
 
 ## Project layout
 
 ```
 src/
-├── ui/      Svelte interface: routes, components, styles
-└── core/    Rust (Tauri): data collection, window, tray, CPU sensor helper
+├── ui/                Svelte interface: routes, components, styles
+└── core/              Rust (Tauri): window, tray, data collection
+    └── src/platform/  per-OS data: windows.rs, linux.rs, macos.rs
 ```
 
 ## Data sources
 
 | Data | Source |
 |---|---|
-| CPU, RAM, processes, network | `sysinfo` crate |
-| NVIDIA GPU (usage, temperature, power, VRAM, fan, clock) | NVML via `nvml-wrapper` (uses the driver's `nvml.dll`) |
-| AMD and Intel GPUs (temperature, power %, fan RPM, VRAM) | Windows D3DKMT adapter performance data (the same source Task Manager uses) |
-| Effective CPU clock, disk activity, per-process GPU usage | Windows PDH performance counters (the same source Task Manager uses) |
-| CPU package power | Windows "Energy Meter" counters (RAPL), no driver needed |
-| CPU temperature (AMD, Intel) | PawnIO driver with its signed `AMDFamily17` module (Tctl register) or `IntelMSR` module (package thermal status) |
+| CPU, RAM, processes, network (all) | `sysinfo` crate |
+| NVIDIA GPU (Windows, Linux) | NVML via `nvml-wrapper` |
+| AMD and Intel GPUs (Windows) | D3DKMT adapter performance data (the same source Task Manager uses) |
+| Clock, disk, per-process GPU usage (Windows) | PDH performance counters |
+| CPU power (Windows) | "Energy Meter" counters (RAPL), no driver needed |
+| CPU temperature (Windows) | PawnIO driver with its signed `AMDFamily17` module (Tctl register) or `IntelMSR` module (package thermal status) |
+| CPU temperature, clock, power, disk (Linux) | hwmon (`k10temp`, `zenpower`, `coretemp`), cpufreq, RAPL powercap, `/proc/diskstats` |
+| AMD GPU (Linux) | `amdgpu` sysfs files |
+| CPU temperature (macOS) | System sensors through `sysinfo` |
+| GPU (macOS) | IOKit `IOAccelerator` performance statistics |
 
 The sampler (`src/core/src/sampler.rs`) runs once per second and only collects what is on screen:
 - **Compact mode:** totals only.
 - **Process list open:** that list's processes too.
-- **Hidden in the tray:** nothing at all, and the WebView switches to its low-memory mode.
+- **Hidden in the tray:** nothing at all, and on Windows the WebView switches to its low-memory mode.
 
 ## Performance notes
 
 - Value transitions use `steps(8)` instead of smooth easing. With continuous transitions the WebView repainted at 60–144 fps after every update, which cost about 25% of a core on a 4K display. With steps it costs about 3%.
 - The window is sized in physical pixels from the WebView's own `devicePixelRatio`, which can differ from the window scale factor on mixed-DPI multi-monitor setups.
 
-Measured on a Ryzen 7 9800X3D with an RTX 4080 SUPER on a 4K display:
+Measured on Windows 11 with a Ryzen 7 9800X3D and an RTX 4080 SUPER on a 4K display:
 
 | State | CPU (of all threads) | Private memory |
 |---|---|---|
