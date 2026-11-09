@@ -188,6 +188,21 @@ fn tune_webkit(window: &tauri::WebviewWindow) {
 #[cfg(not(windows))]
 fn set_memory_level(_window: &tauri::WebviewWindow, _low: bool) {}
 
+/// The UI shows the window once it has sized it. Should that never happen
+/// (a script error, a WebView that's slow to start), show it anyway so the
+/// widget can't end up running with no window on screen.
+fn show_fallback(app: AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(4));
+        let wanted = app.state::<SharedView>().lock().unwrap().visible;
+        if let Some(w) = app.get_webview_window("main") {
+            if wanted && !w.is_visible().unwrap_or(true) {
+                let _ = w.show();
+            }
+        }
+    });
+}
+
 fn toggle_visible(app: &AppHandle) {
     let visible = app.state::<SharedView>().lock().unwrap().visible;
     set_visible(app, !visible);
@@ -295,8 +310,6 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-
 /// Tells the UI which OS it runs on. The user agent can't be trusted for this:
 /// WebKitGTK reports itself as Safari on a Mac.
 fn platform_script<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
@@ -306,6 +319,7 @@ fn platform_script<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let view: SharedView = Arc::new(Mutex::new(View { visible: true, expanded: false, panel: Panel::None }));
 
@@ -339,6 +353,7 @@ pub fn run() {
             if let Some(w) = app.get_webview_window("main") {
                 tune_webkit(&w);
             }
+            show_fallback(app.handle().clone());
             build_tray(app)?;
             sampler::spawn(app.handle().clone(), view.clone());
             updater::spawn_checks(app.handle().clone());

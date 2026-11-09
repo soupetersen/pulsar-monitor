@@ -110,8 +110,20 @@
     // it is shown once the UI has rendered and the window has its final size.
     let shown = false;
     const fit = async () => {
+      try {
+        await resize();
+      } finally {
+        // Show the window even if a step above failed (Wayland, for one,
+        // doesn't let apps read or set their window position).
+        if (!shown) {
+          shown = true;
+          await win.show();
+        }
+      }
+    };
+    const resize = async () => {
       const dpr = window.devicePixelRatio || 1;
-      const monitor = await currentMonitor();
+      const monitor = await currentMonitor().catch(() => null);
       if (monitor) {
         // Never taller than the monitor's work area (taskbar excluded).
         maxHeight = Math.floor(monitor.workArea.size.height / dpr) - 24;
@@ -126,17 +138,13 @@
 
       // Growing downwards past the bottom of the screen? Slide the window up.
       if (monitor) {
-        const pos = await win.outerPosition();
+        const pos = await win.outerPosition().catch(() => null);
         const bottom = monitor.workArea.position.y + monitor.workArea.size.height;
         const margin = Math.round(12 * dpr);
-        if (pos.y + h > bottom - margin) {
+        if (pos && pos.y + h > bottom - margin) {
           const y = Math.max(monitor.workArea.position.y + margin, bottom - margin - h);
-          await win.setPosition(new PhysicalPosition(pos.x, y));
+          await win.setPosition(new PhysicalPosition(pos.x, y)).catch(() => {});
         }
-      }
-      if (!shown) {
-        shown = true;
-        await win.show();
       }
     };
     const ro = new ResizeObserver(() => void fit());
