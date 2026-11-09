@@ -1,0 +1,90 @@
+name: Release
+
+# Pushing a version tag (v1.2.3) builds the installers for every platform and
+# creates a draft release with them attached. The draft is published by hand
+# after the notes are written.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            args: ""
+            bundle: src/core/target/release/bundle
+          - name: Linux
+            os: ubuntu-22.04
+            args: ""
+            bundle: src/core/target/release/bundle
+          - name: macOS
+            os: macos-latest
+            # One dmg for Apple Silicon and Intel Macs.
+            args: "--target universal-apple-darwin"
+            bundle: src/core/target/universal-apple-darwin/release/bundle
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/core
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - run: npm ci
+
+      - run: npm run tauri build -- ${{ matrix.args }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pulsar-${{ runner.os }}
+          path: |
+            ${{ matrix.bundle }}/nsis/*.exe
+            ${{ matrix.bundle }}/deb/*.deb
+            ${{ matrix.bundle }}/appimage/*.AppImage
+            ${{ matrix.bundle }}/dmg/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -la dist
+          gh release create "$TAG" dist/* \
+            --repo "${{ github.repository }}" \
+            --draft \
+            --title "Pulsar ${TAG#v}" \
+            --notes "Release notes coming soon."
