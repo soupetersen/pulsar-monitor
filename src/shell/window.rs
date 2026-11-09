@@ -4,14 +4,10 @@
 use gpui::{Pixels, Size, Window, WindowBackgroundAppearance, px};
 
 /// The backdrop behind the card: acrylic on Windows (gpui 0.2.2 has no Mica
-/// yet), vibrancy on macOS, and plain transparency on Linux, where the card
-/// itself is drawn almost opaque.
+/// yet), vibrancy on macOS, and a blur on KDE. Other Linux desktops (GNOME)
+/// don't let apps blur what's behind them: the window is just translucent.
 pub fn background() -> WindowBackgroundAppearance {
-    if cfg!(target_os = "linux") {
-        WindowBackgroundAppearance::Transparent
-    } else {
-        WindowBackgroundAppearance::Blurred
-    }
+    WindowBackgroundAppearance::Blurred
 }
 
 #[cfg(target_os = "linux")]

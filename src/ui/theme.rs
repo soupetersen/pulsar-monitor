@@ -27,14 +27,15 @@ pub struct Theme {
 
 impl Theme {
     pub fn get(mode: Mode) -> Self {
-        // Linux has no system backdrop behind the window, so the card is
-        // drawn (almost) opaque there.
+        // Linux blurs what's behind the window only on KDE (GNOME doesn't
+        // let apps ask for it), so the card is less see-through there to
+        // stay readable over the bare wallpaper.
         let linux = cfg!(target_os = "linux");
         match mode {
             Mode::Dark => Theme {
                 text: rgb(0xf3f4f6),
                 muted: rgb(0xb4b9c2),
-                card: rgba(if linux { 0x1c1d22f5 } else { 0x1c1d228c }),
+                card: rgba(if linux { 0x1c1d22d1 } else { 0x1c1d228c }),
                 inset: rgba(0xffffff0d),
                 chip: rgba(0xffffff12),
                 track: rgba(0xffffff1f),
@@ -45,7 +46,7 @@ impl Theme {
             Mode::Light => Theme {
                 text: rgb(0x111111),
                 muted: rgb(0x565b64),
-                card: rgba(if linux { 0xfcfcfdfa } else { 0xfcfcfde6 }),
+                card: rgba(if linux { 0xf6f6f8e0 } else { 0xf6f6f8b8 }),
                 inset: rgba(0x0000000a),
                 chip: rgba(0x0000000d),
                 track: rgba(0x00000017),
