@@ -32,7 +32,7 @@ type Shared = Arc<Mutex<Option<Sample>>>;
 
 fn spawn_sampler(shared: Shared) {
     std::thread::spawn(move || {
-        let mut sys = System::new();
+        let Ok(mut sys) = System::new() else { return };
         let nvml = nvml_wrapper::Nvml::init().ok();
         loop {
             sys.refresh_cpu_usage();
@@ -234,7 +234,7 @@ fn native_tweaks(window: &Window) -> isize {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
     };
-    let Ok(handle) = window.window_handle() else { return 0 };
+    let Ok(handle) = HasWindowHandle::window_handle(window) else { return 0 };
     let RawWindowHandle::Win32(h) = handle.as_raw() else { return 0 };
     let hwnd = h.hwnd.get() as windows_sys::Win32::Foundation::HWND;
     unsafe {
