@@ -164,6 +164,26 @@ fn set_memory_level(window: &tauri::WebviewWindow, low: bool) {
     });
 }
 
+/// WebKitGTK defaults suit a browser. The widget is one small local page, so
+/// keep the cache minimal and turn off what it never uses.
+#[cfg(target_os = "linux")]
+fn tune_webkit(window: &tauri::WebviewWindow) {
+    use webkit2gtk::{CacheModel, SettingsExt, WebContextExt, WebViewExt};
+    let _ = window.with_webview(|webview| {
+        let view = webview.inner();
+        if let Some(context) = view.context() {
+            context.set_cache_model(CacheModel::DocumentViewer);
+        }
+        if let Some(settings) = WebViewExt::settings(&view) {
+            settings.set_enable_page_cache(false);
+            settings.set_enable_webgl(false);
+            settings.set_enable_webaudio(false);
+            settings.set_enable_media_stream(false);
+            settings.set_enable_html5_database(false);
+        }
+    });
+}
+
 #[cfg(not(windows))]
 fn set_memory_level(_window: &tauri::WebviewWindow, _low: bool) {}
 
@@ -314,6 +334,10 @@ pub fn run() {
             // macOS: menu bar app, no Dock icon.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            #[cfg(target_os = "linux")]
+            if let Some(w) = app.get_webview_window("main") {
+                tune_webkit(&w);
+            }
             build_tray(app)?;
             sampler::spawn(app.handle().clone(), view.clone());
             updater::spawn_checks(app.handle().clone());

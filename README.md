@@ -125,7 +125,7 @@ Measured on Windows 11 with a Ryzen 7 9800X3D and an RTX 4080 SUPER on a 4K disp
 | Expanded with the GPU process list open | ~0.4–0.6% | ~240 MB |
 | Hidden in the tray | ~0% | ~220 MB |
 
-Most of the memory belongs to WebView2. The Rust process itself uses about 35 MB.
+Most of the memory belongs to WebView2. The Rust process itself uses about 35 MB. On Linux the whole app uses around 100 MB; WebKitGTK runs with its smallest cache model and without WebGL, Web Audio or media streams, which the widget doesn't need.
 
 ## Third-party
 
