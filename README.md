@@ -79,7 +79,7 @@ npm run release -- 1.0.0 --platforms windows,linux
 npm run release -- patch --dry-run             # show what would happen
 ```
 
-Pulsar updates itself: it checks the latest published release shortly after starting and every 6 hours, and shows an update icon when a newer version exists. Clicking it downloads, installs and restarts. Updates are signed; the release workflow signs them with the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets, and the app only accepts packages signed with that key (its public half is in `tauri.conf.json`). Losing the private key means installed copies can no longer update, so keep a backup of it.
+Pulsar updates itself: it checks the latest published release shortly after starting, every hour and when the widget is shown again, and shows an update icon when a newer version exists. Clicking it downloads, installs and restarts. Updates are signed; the release workflow signs them with the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets, and the app only accepts packages signed with that key (its public half is in `tauri.conf.json`). Losing the private key means installed copies can no longer update, so keep a backup of it.
 
 The command bumps the version in `package.json`, `package-lock.json`, `tauri.conf.json`, `Cargo.toml` and `Cargo.lock`, commits `Release x.y.z`, tags `vx.y.z`, pushes both, and starts the Release workflow. The workflow builds the installers of the chosen platforms and attaches them to a draft release, which is published after a quick look (`gh release edit vx.y.z --draft=false`). Regular commits only run the Build workflow.
 

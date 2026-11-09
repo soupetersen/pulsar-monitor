@@ -137,6 +137,7 @@ fn set_visible(app: &AppHandle, visible: bool) {
     if let Some(w) = app.get_webview_window("main") {
         if visible {
             set_memory_level(&w, false);
+            updater::check_soon(app);
             let _ = w.show();
             let _ = w.set_focus();
         } else {

@@ -1,15 +1,17 @@
-//! Auto-update: checks the latest GitHub release shortly after startup and
-//! every few hours. When a newer, correctly signed version exists, the UI
+//! Auto-update: checks the latest GitHub release shortly after startup, every
+//! hour, and when the widget is shown again (at most every 10 minutes). When a newer, correctly signed version exists, the UI
 //! shows an update icon; clicking it downloads, installs and restarts.
 
+use std::sync::mpsc::{self, Sender};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 const FIRST_CHECK: Duration = Duration::from_secs(20);
-const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
+const CHECK_EVERY: Duration = Duration::from_secs(60 * 60);
+const MIN_GAP: Duration = Duration::from_secs(10 * 60);
 
 /// The update found by the last check, waiting for the user to install it.
 #[derive(Default)]
@@ -21,17 +23,35 @@ pub struct UpdateInfo {
     version: String,
 }
 
+/// Wakes the check thread early (see `check_soon`).
+pub struct Nudge(Mutex<Sender<()>>);
+
 pub fn spawn_checks(app: AppHandle) {
+    let (tx, rx) = mpsc::channel();
+    app.manage(Nudge(Mutex::new(tx)));
     std::thread::Builder::new()
         .name("updater".into())
         .spawn(move || {
             std::thread::sleep(FIRST_CHECK);
+            let mut last = Instant::now();
+            tauri::async_runtime::block_on(check(&app));
             loop {
+                let nudged = rx.recv_timeout(CHECK_EVERY).is_ok();
+                if nudged && last.elapsed() < MIN_GAP {
+                    continue;
+                }
+                last = Instant::now();
                 tauri::async_runtime::block_on(check(&app));
-                std::thread::sleep(CHECK_EVERY);
             }
         })
         .expect("failed to start updater thread");
+}
+
+/// Asks for a check now, e.g. when the widget is shown again after a while.
+pub fn check_soon(app: &AppHandle) {
+    if let Some(nudge) = app.try_state::<Nudge>() {
+        let _ = nudge.0.lock().unwrap().send(());
+    }
 }
 
 async fn check(app: &AppHandle) {
