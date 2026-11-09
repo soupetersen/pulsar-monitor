@@ -14,7 +14,7 @@ use io_kit_sys::{
 use sysinfo::Components;
 
 use super::{Extras, Want};
-use crate::sampler::GpuStats;
+use crate::monitor::sampler::GpuStats;
 
 pub struct Platform {
     components: Option<Components>,

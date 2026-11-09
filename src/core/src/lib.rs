@@ -1,17 +1,11 @@
-#[cfg(windows)]
-pub mod cpu_sensor;
-mod gpu;
-#[cfg(windows)]
-mod gpu_kmt;
-#[cfg(windows)]
-mod pdh;
-mod platform;
-mod sampler;
+pub mod monitor;
 mod updater;
 
 use std::sync::{Arc, Mutex};
 
-use sampler::{Panel, SharedView, View};
+use monitor::{Panel, SharedView, View};
+#[cfg(windows)]
+use monitor::cpu_sensor;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent, Wry};
@@ -76,7 +70,7 @@ fn toggle_cpu_temp(app: &AppHandle, enable: bool) -> CpuTempStatus {
 #[tauri::command]
 async fn cpu_power_setup() -> bool {
     #[cfg(target_os = "linux")]
-    return platform::power_setup_needed();
+    return monitor::power_setup_needed();
     #[cfg(not(target_os = "linux"))]
     false
 }
@@ -85,7 +79,7 @@ async fn cpu_power_setup() -> bool {
 #[tauri::command]
 async fn enable_cpu_power() -> bool {
     #[cfg(target_os = "linux")]
-    platform::enable_power();
+    monitor::enable_power();
     cpu_power_setup().await
 }
 
@@ -355,7 +349,10 @@ pub fn run() {
             }
             show_fallback(app.handle().clone());
             build_tray(app)?;
-            sampler::spawn(app.handle().clone(), view.clone());
+            let handle = app.handle().clone();
+            monitor::spawn(view.clone(), move |stats| {
+                let _ = handle.emit("stats", stats);
+            });
             updater::spawn_checks(app.handle().clone());
             Ok(())
         })
@@ -368,30 +365,4 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-/// `--gpu-info`: prints what each GPU reports (diagnostics).
-pub fn print_gpu_info() {
-    #[cfg(windows)]
-    {
-        for a in gpu_kmt::adapters() {
-            println!(
-                "D3DKMT  {:<40} luid {}  vram {:.1} GB  {:?}",
-                a.name,
-                a.luid,
-                a.vram_total as f64 / (1u64 << 30) as f64,
-                a.perf()
-            );
-        }
-        if let Some(main) = gpu_kmt::main_adapter() {
-            println!("main adapter: {}", main.name);
-        }
-    }
-    match gpu::NvGpu::new().and_then(|nv| nv.sample().map(|s| (nv.name.clone(), s))) {
-        Some((name, s)) => println!(
-            "NVML    {name:<40} usage {}%  temp {:?}  power {:?} W  fan {:?}%",
-            s.usage, s.temp_c, s.power_w, s.fan_pct
-        ),
-        None => println!("NVML    not available"),
-    }
 }

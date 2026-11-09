@@ -5,14 +5,14 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         #[cfg(windows)]
-        Some(pulsar_lib::cpu_sensor::HELPER_ARG) => std::process::exit(pulsar_lib::cpu_sensor::run_helper()),
+        Some(pulsar_lib::monitor::cpu_sensor::HELPER_ARG) => std::process::exit(pulsar_lib::monitor::cpu_sensor::run_helper()),
         #[cfg(windows)]
-        Some(pulsar_lib::cpu_sensor::ENABLE_ARG) => {
-            std::process::exit(pulsar_lib::cpu_sensor::install(args.get(2).map(String::as_str).unwrap_or_default()))
+        Some(pulsar_lib::monitor::cpu_sensor::ENABLE_ARG) => {
+            std::process::exit(pulsar_lib::monitor::cpu_sensor::install(args.get(2).map(String::as_str).unwrap_or_default()))
         }
         #[cfg(windows)]
-        Some(pulsar_lib::cpu_sensor::DISABLE_ARG) => std::process::exit(pulsar_lib::cpu_sensor::uninstall()),
-        Some("--gpu-info") => pulsar_lib::print_gpu_info(),
+        Some(pulsar_lib::monitor::cpu_sensor::DISABLE_ARG) => std::process::exit(pulsar_lib::monitor::cpu_sensor::uninstall()),
+        Some("--gpu-info") => pulsar_lib::monitor::print_gpu_info(),
         _ => pulsar_lib::run(),
     }
 }

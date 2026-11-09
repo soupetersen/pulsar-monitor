@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use super::{Extras, Want};
-use crate::sampler::{DiskStats, GpuStats};
+use crate::monitor::sampler::{DiskStats, GpuStats};
 
 pub struct Platform {
     cpu_temp: Option<PathBuf>,

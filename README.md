@@ -87,9 +87,12 @@ The command bumps the version in `package.json`, `package-lock.json`, `tauri.con
 
 ```
 src/
-├── ui/                Svelte interface: routes, components, styles
-└── core/              Rust (Tauri): window, tray, data collection
-    └── src/platform/  per-OS data: windows.rs, linux.rs, macos.rs
+├── ui/                        Svelte interface: routes, components, styles
+└── core/                      Rust (Tauri): window, tray, updater
+    └── src/monitor/           data collection, independent of the UI
+        ├── sampler.rs         collects everything once per second
+        ├── platform/          per-OS data: windows.rs, linux.rs, macos.rs
+        └── cpu_sensor.rs      CPU temperature helper (Windows)
 ```
 
 ## Data sources
@@ -107,7 +110,7 @@ src/
 | CPU temperature (macOS) | System sensors through `sysinfo` |
 | GPU (macOS) | IOKit `IOAccelerator` performance statistics |
 
-The sampler (`src/core/src/sampler.rs`) runs once per second and only collects what is on screen:
+The sampler (`src/core/src/monitor/sampler.rs`) runs once per second and only collects what is on screen:
 - **Compact mode:** totals only.
 - **Process list open:** that list's processes too.
 - **Hidden in the tray:** nothing at all, and on Windows the WebView switches to its low-memory mode.
