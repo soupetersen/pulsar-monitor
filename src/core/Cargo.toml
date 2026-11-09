@@ -1,7 +1,7 @@
 [package]
 name = "pulsar"
 version = "0.2.1"
-description = "System monitor desktop widget for Windows (CPU, GPU, RAM)"
+description = "Lightweight system monitor desktop widget (CPU, GPU, RAM)"
 authors = ["Thiago Petersen"]
 edition = "2024"
 
@@ -18,17 +18,19 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = "0.40.1"
 nvml-wrapper = "0.13.0"
 tauri-plugin-autostart = "2.7.0"
 tauri-plugin-window-state = "2.5.0"
+sys-locale = "0.3.2"
+
+[target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Performance", "Win32_Foundation", "Win32_System_Memory", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_System_Com", "Wdk_Graphics_Direct3D"] }
 webview2-com = "0.39.1"
 windows-core = "0.62.2"
-sys-locale = "0.3.2"
 libloading = "0.8"
 
 

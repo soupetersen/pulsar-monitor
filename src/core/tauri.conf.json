@@ -10,6 +10,7 @@
     "frontendDist": "../../build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -25,10 +26,7 @@
         "skipTaskbar": true,
         "shadow": true,
         "center": true,
-        "visible": false,
-        "windowEffects": {
-          "effects": ["mica"]
-        }
+        "visible": false
       }
     ],
     "security": {
@@ -37,7 +35,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": ["deb", "appimage"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Pulsar",
+        "width": 372,
+        "height": 132,
+        "decorations": false,
+        "transparent": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": true,
+        "center": true,
+        "visible": false,
+        "windowEffects": {
+          "effects": ["hudWindow"],
+          "radius": 12
+        }
+      }
+    ]
+  },
+  "bundle": {
+    "targets": ["dmg"]
+  }
+}

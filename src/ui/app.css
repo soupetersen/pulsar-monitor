@@ -1,5 +1,5 @@
 :root {
-  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", "Cantarell", "Ubuntu", system-ui, sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   user-select: none;
@@ -29,6 +29,19 @@
   --track: rgba(0, 0, 0, 0.09);
   --hover: rgba(0, 0, 0, 0.06);
   --accent: #111111;
+}
+
+/* No system backdrop on Linux: draw the card (almost) opaque. */
+:root[data-platform="linux"][data-theme="dark"] {
+  --card: rgba(28, 29, 34, 0.96);
+}
+:root[data-platform="linux"][data-theme="light"] {
+  --card: rgba(252, 252, 253, 0.98);
+}
+
+/* Windows rounds the window itself; elsewhere the transparent window needs the card rounded. */
+:root:not([data-platform="windows"]) .pulsar-shell {
+  border-radius: 12px;
 }
 
 html,

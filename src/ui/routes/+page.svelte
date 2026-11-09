@@ -132,7 +132,7 @@
   const hide = () => invoke("hide_to_tray");
 </script>
 
-<div class="shell" class:expanded bind:this={shell} style:max-height="{maxHeight}px">
+<div class="shell pulsar-shell" class:expanded bind:this={shell} style:max-height="{maxHeight}px">
   {#if expanded}
     <Expanded
       {stats}

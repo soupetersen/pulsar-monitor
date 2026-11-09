@@ -1,7 +1,11 @@
+#[cfg(windows)]
 pub mod cpu_sensor;
 mod gpu;
+#[cfg(windows)]
 mod gpu_kmt;
+#[cfg(windows)]
 mod pdh;
+mod platform;
 mod sampler;
 
 use std::sync::{Arc, Mutex};
@@ -15,13 +19,15 @@ use tauri_plugin_window_state::StateFlags;
 
 struct TrayItems {
     on_top: CheckMenuItem<Wry>,
-    cpu_temp: CheckMenuItem<Wry>,
+    /// Only on platforms where the CPU temperature needs a one-time setup.
+    cpu_temp: Option<CheckMenuItem<Wry>>,
 }
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct CpuTempStatus {
-    /// AMD or Intel CPU (the kinds the sensor supports).
+    /// The CPU temperature needs a setup step on this machine (Windows with an
+    /// AMD or Intel CPU). Elsewhere the temperature, when available, just shows.
     supported: bool,
     /// PawnIO driver installed.
     pawnio: bool,
@@ -29,10 +35,16 @@ struct CpuTempStatus {
     enabled: bool,
 }
 
+#[cfg(windows)]
 fn cpu_temp_status_now() -> CpuTempStatus {
     let supported = cpu_sensor::vendor().is_some();
     let pawnio = supported && cpu_sensor::pawnio_installed();
     CpuTempStatus { supported, pawnio, enabled: pawnio && cpu_sensor::enabled() }
+}
+
+#[cfg(not(windows))]
+fn cpu_temp_status_now() -> CpuTempStatus {
+    CpuTempStatus { supported: false, pawnio: false, enabled: false }
 }
 
 #[tauri::command]
@@ -47,9 +59,14 @@ async fn set_cpu_temp(app: AppHandle, enable: bool) -> CpuTempStatus {
 }
 
 fn toggle_cpu_temp(app: &AppHandle, enable: bool) -> CpuTempStatus {
+    #[cfg(windows)]
     cpu_sensor::request_toggle(enable);
+    #[cfg(not(windows))]
+    let _ = enable;
     let status = cpu_temp_status_now();
-    let _ = app.state::<TrayItems>().cpu_temp.set_checked(status.enabled);
+    if let Some(item) = &app.state::<TrayItems>().cpu_temp {
+        let _ = item.set_checked(status.enabled);
+    }
     let _ = app.emit("cpu-temp-changed", status.clone());
     status
 }
@@ -57,11 +74,14 @@ fn toggle_cpu_temp(app: &AppHandle, enable: bool) -> CpuTempStatus {
 /// Opens the PawnIO website (where the driver installer is) in the browser.
 #[tauri::command]
 fn open_pawnio_site() {
-    use std::os::windows::process::CommandExt;
-    let _ = std::process::Command::new("rundll32.exe")
-        .args(["url.dll,FileProtocolHandler", "https://pawnio.eu/"])
-        .creation_flags(0x0800_0000)
-        .spawn();
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", "https://pawnio.eu/"])
+            .creation_flags(0x0800_0000)
+            .spawn();
+    }
 }
 
 /// The UI tells the sampler what it is showing, so nothing extra is collected.
@@ -111,6 +131,7 @@ fn set_visible(app: &AppHandle, visible: bool) {
 
 /// While hidden, ask WebView2 to release caches and GPU buffers
 /// (COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW); back to normal when shown.
+#[cfg(windows)]
 fn set_memory_level(window: &tauri::WebviewWindow, low: bool) {
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL, ICoreWebView2_19,
@@ -124,6 +145,9 @@ fn set_memory_level(window: &tauri::WebviewWindow, low: bool) {
         let _ = core19.SetMemoryUsageTargetLevel(level);
     });
 }
+
+#[cfg(not(windows))]
+fn set_memory_level(_window: &tauri::WebviewWindow, _low: bool) {}
 
 fn toggle_visible(app: &AppHandle) {
     let visible = app.state::<SharedView>().lock().unwrap().visible;
@@ -142,11 +166,12 @@ struct TrayLabels {
 
 fn tray_labels() -> TrayLabels {
     let pt = sys_locale::get_locale().is_some_and(|l| l.to_lowercase().starts_with("pt"));
+    let windows = cfg!(windows);
     if pt {
         TrayLabels {
             toggle: "Mostrar / ocultar",
             on_top: "Sempre no topo",
-            autostart: "Iniciar com o Windows",
+            autostart: if windows { "Iniciar com o Windows" } else { "Iniciar com o sistema" },
             cpu_temp: "Temperatura da CPU (requer admin)",
             cpu_temp_needs_pawnio: "Temperatura da CPU (requer PawnIO)",
             quit: "Sair",
@@ -155,7 +180,7 @@ fn tray_labels() -> TrayLabels {
         TrayLabels {
             toggle: "Show / hide",
             on_top: "Always on top",
-            autostart: "Start with Windows",
+            autostart: if windows { "Start with Windows" } else { "Start at login" },
             cpu_temp: "CPU temperature (needs admin)",
             cpu_temp_needs_pawnio: "CPU temperature (needs PawnIO)",
             quit: "Quit",
@@ -169,26 +194,29 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let on_top = CheckMenuItem::with_id(app, "on_top", labels.on_top, true, true, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", labels.autostart, true, autostart_on, None::<&str>)?;
-    // CPU temperature (AMD and Intel): needs the PawnIO driver and a one-time UAC prompt.
-    let cpu_temp_supported = cpu_sensor::vendor().is_some();
-    let pawnio = cpu_temp_supported && cpu_sensor::pawnio_installed();
-    let cpu_temp = CheckMenuItem::with_id(
-        app,
-        "cpu_temp",
-        if pawnio { labels.cpu_temp } else { labels.cpu_temp_needs_pawnio },
-        pawnio,
-        pawnio && cpu_sensor::enabled(),
-        None::<&str>,
-    )?;
     let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let menu = if cpu_temp_supported {
-        Menu::with_items(app, &[&show, &on_top, &autostart, &cpu_temp, &sep, &quit])?
+
+    // CPU temperature on Windows (AMD and Intel): needs the PawnIO driver and a one-time UAC prompt.
+    let status = cpu_temp_status_now();
+    let cpu_temp = if status.supported {
+        Some(CheckMenuItem::with_id(
+            app,
+            "cpu_temp",
+            if status.pawnio { labels.cpu_temp } else { labels.cpu_temp_needs_pawnio },
+            status.pawnio,
+            status.enabled,
+            None::<&str>,
+        )?)
     } else {
-        Menu::with_items(app, &[&show, &on_top, &autostart, &sep, &quit])?
+        None
+    };
+    let menu = match &cpu_temp {
+        Some(item) => Menu::with_items(app, &[&show, &on_top, &autostart, item, &sep, &quit])?,
+        None => Menu::with_items(app, &[&show, &on_top, &autostart, &sep, &quit])?,
     };
 
-    app.manage(TrayItems { on_top: on_top.clone(), cpu_temp: cpu_temp.clone() });
+    app.manage(TrayItems { on_top: on_top.clone(), cpu_temp });
 
     let autostart_item = autostart.clone();
     TrayIconBuilder::with_id("main")
@@ -212,8 +240,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                 // The UAC prompt and schtasks take a while: don't block the UI thread.
                 let app = app.clone();
                 std::thread::spawn(move || {
-                    cpu_sensor::log("tray: CPU temperature item clicked");
-                    toggle_cpu_temp(&app, !cpu_sensor::enabled());
+                    let enabled = cpu_temp_status_now().enabled;
+                    toggle_cpu_temp(&app, !enabled);
                 });
             }
             "quit" => app.exit(0),
@@ -263,17 +291,20 @@ pub fn run() {
 
 /// `--gpu-info`: prints what each GPU reports (diagnostics).
 pub fn print_gpu_info() {
-    for a in gpu_kmt::adapters() {
-        println!(
-            "D3DKMT  {:<40} luid {}  vram {:.1} GB  {:?}",
-            a.name,
-            a.luid,
-            a.vram_total as f64 / (1u64 << 30) as f64,
-            a.perf()
-        );
-    }
-    if let Some(main) = gpu_kmt::main_adapter() {
-        println!("main adapter: {}", main.name);
+    #[cfg(windows)]
+    {
+        for a in gpu_kmt::adapters() {
+            println!(
+                "D3DKMT  {:<40} luid {}  vram {:.1} GB  {:?}",
+                a.name,
+                a.luid,
+                a.vram_total as f64 / (1u64 << 30) as f64,
+                a.perf()
+            );
+        }
+        if let Some(main) = gpu_kmt::main_adapter() {
+            println!("main adapter: {}", main.name);
+        }
     }
     match gpu::NvGpu::new().and_then(|nv| nv.sample().map(|s| (nv.name.clone(), s))) {
         Some((name, s)) => println!(
