@@ -1,8 +1,10 @@
 //! Colours and sizes, matching the tokens of the WebView UI (app.css).
 
 use gpui::{Pixels, Rgba, rgb, rgba};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Mode {
     #[default]
     Dark,

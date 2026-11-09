@@ -4,35 +4,23 @@
 mod ring;
 pub mod theme;
 
-use futures::StreamExt;
-use futures::channel::mpsc::UnboundedReceiver;
-use gpui::{Context, FontWeight, MouseButton, Render, Window, div, prelude::*};
+use gpui::{Context, Entity, FontWeight, MouseButton, Render, Window, div, prelude::*};
 
 use crate::monitor::Stats;
+use crate::shell::StatsStore;
 use theme::{Mode, Theme, font_family, u};
 
 const GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 pub struct Widget {
-    stats: Option<Stats>,
+    stats: Entity<StatsStore>,
     mode: Mode,
 }
 
 impl Widget {
-    pub fn new(mut rx: UnboundedReceiver<Stats>, mode: Mode, cx: &mut Context<Self>) -> Self {
-        cx.spawn(async move |this, cx| {
-            while let Some(stats) = rx.next().await {
-                let alive = this.update(cx, |view, cx| {
-                    view.stats = Some(stats);
-                    cx.notify();
-                });
-                if alive.is_err() {
-                    break;
-                }
-            }
-        })
-        .detach();
-        Self { stats: None, mode }
+    pub fn new(stats: Entity<StatsStore>, mode: Mode, cx: &mut Context<Self>) -> Self {
+        cx.observe(&stats, |_, _, cx| cx.notify()).detach();
+        Self { stats, mode }
     }
 }
 
@@ -70,10 +58,11 @@ fn rings(stats: &Stats) -> Vec<RingData> {
 }
 
 impl Render for Widget {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::get(self.mode);
-        let host = self.stats.as_ref().map(|s| s.host.clone()).unwrap_or_else(|| "…".into());
-        let rings = self.stats.as_ref().map(rings).unwrap_or_default();
+        let stats: Option<&Stats> = self.stats.read(cx).latest.as_ref();
+        let host = stats.map(|s| s.host.clone()).unwrap_or_else(|| "…".into());
+        let rings = stats.map(rings).unwrap_or_default();
 
         div()
             .size_full()
