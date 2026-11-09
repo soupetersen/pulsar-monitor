@@ -1,6 +1,6 @@
 //! Small pieces shared by both views: icon buttons and the sparkline.
 
-use gpui::{Context, Div, PathBuilder, Render, Rgba, Stateful, Window, canvas, div, point, prelude::*, px, svg};
+use gpui::{Context, Div, FontWeight, PathBuilder, Render, Rgba, Stateful, Window, canvas, div, point, prelude::*, px, svg};
 
 use super::theme::{Theme, font_family, u};
 
@@ -56,6 +56,58 @@ pub fn icon_btn(
                 .text_color(color)
                 .group_hover(id, move |s| s.text_color(hover_color)),
         )
+}
+
+/// A CPU sensor that needs a one-time setup (temperature, or power on
+/// Linux): an icon with a dot, plus "Enable" as the chip in the stats grid
+/// (`label`). Like TempSetup.svelte.
+pub fn setup_btn(
+    id: &'static str,
+    icon: &'static str,
+    tip: &'static str,
+    busy: bool,
+    label: bool,
+    theme: Theme,
+) -> Stateful<Div> {
+    let t = super::i18n::t();
+    let color = if label { theme.text } else { theme.muted };
+    div()
+        .id(id)
+        .group(id)
+        .relative()
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .gap(u(6.))
+        .rounded(u(6.))
+        .text_color(color)
+        .map(|d| {
+            if label {
+                d.h(u(24.)).pl(u(6.)).pr(u(8.)).bg(theme.chip).text_size(u(12.)).font_weight(FontWeight::SEMIBOLD)
+            } else {
+                d.h(u(30.)).min_w(u(30.)).px(u(8.))
+            }
+        })
+        .when(!busy, |d| d.hover(move |s| s.bg(theme.hover)))
+        .tooltip(move |_, cx| cx.new(|_| Tip { text: tip, theme }).into())
+        .child(
+            svg()
+                .path(icon)
+                .size(u(14.))
+                .text_color(if busy { alpha(color, 0.45) } else { color })
+                .when(!label, |s| s.group_hover(id, move |s| s.text_color(theme.text))),
+        )
+        .child(
+            div()
+                .absolute()
+                .top(u(if label { 3. } else { 5. }))
+                .left(u(if label { 15. } else { 17. }))
+                .size(u(6.))
+                .rounded_full()
+                .bg(theme.accent),
+        )
+        .when(label, |d| d.child(if busy { t.enabling } else { t.enable }))
 }
 
 pub fn alpha(color: Rgba, a: f32) -> Rgba {

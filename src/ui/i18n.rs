@@ -27,6 +27,13 @@ pub struct Strings {
     pub no_processes: &'static str,
     pub processes: fn(u32) -> String,
     pub of_ram: fn(&str) -> String,
+    pub cpu_temp_off: &'static str,
+    pub cpu_temp_needs_pawnio: &'static str,
+    pub cpu_temp_enabling: &'static str,
+    pub cpu_power_off: &'static str,
+    pub cpu_power_enabling: &'static str,
+    pub enable: &'static str,
+    pub enabling: &'static str,
 }
 
 fn index(panel: Panel) -> usize {
@@ -65,6 +72,13 @@ const EN: Strings = Strings {
     no_processes: "No processes using it right now.",
     processes: |n| format!("{n} processes"),
     of_ram: |pct| format!("{pct}% of RAM"),
+    cpu_temp_off: "CPU temperature is off. Click to enable it (asks for administrator permission once).",
+    cpu_temp_needs_pawnio: "CPU temperature needs the free PawnIO driver. Click to open pawnio.eu.",
+    cpu_temp_enabling: "Enabling CPU temperature…",
+    cpu_power_off: "Linux only lets root read the CPU power. Click to allow it (asks for your password once).",
+    cpu_power_enabling: "Allowing the CPU power reading…",
+    enable: "Enable",
+    enabling: "Enabling…",
 };
 
 const PT: Strings = Strings {
@@ -89,6 +103,13 @@ const PT: Strings = Strings {
     no_processes: "Nenhum processo usando agora.",
     processes: |n| format!("{n} processos"),
     of_ram: |pct| format!("{pct}% da RAM"),
+    cpu_temp_off: "Temperatura da CPU desativada. Clique para ativar (pede permissão de administrador uma vez).",
+    cpu_temp_needs_pawnio: "A temperatura da CPU precisa do driver gratuito PawnIO. Clique para abrir pawnio.eu.",
+    cpu_temp_enabling: "Ativando a temperatura da CPU…",
+    cpu_power_off: "O Linux só deixa o root ler a potência da CPU. Clique para liberar (pede sua senha uma vez).",
+    cpu_power_enabling: "Liberando a leitura da potência da CPU…",
+    enable: "Ativar",
+    enabling: "Ativando…",
 };
 
 fn locale() -> &'static str {

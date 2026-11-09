@@ -39,7 +39,33 @@ pub enum Action {
     /// The CPU temperature setup finished (Windows): refresh the menu.
     #[cfg_attr(not(windows), allow(dead_code))]
     CpuTempChanged,
+    /// Linux: run the CPU power setup (password prompt).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    EnablePower,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    PowerChanged,
     Quit,
+}
+
+/// CPU sensors that need a one-time setup before they can be read.
+#[derive(Clone, Copy, Default)]
+pub struct Sensors {
+    /// The CPU temperature can be turned on but isn't (Windows). The value
+    /// is whether the PawnIO driver it needs is installed.
+    pub temp_setup: Option<bool>,
+    pub temp_busy: bool,
+    /// The CPU power counter is there but root-only (Linux).
+    pub power_setup: bool,
+    pub power_busy: bool,
+}
+
+fn sensors_now() -> Sensors {
+    #[cfg(target_os = "linux")]
+    let power_setup = monitor::power_setup_needed();
+    #[cfg(not(target_os = "linux"))]
+    let power_setup = false;
+    let temp_setup = cpu_temp_check().and_then(|(enabled, pawnio)| (!enabled).then_some(pawnio));
+    Sensors { temp_setup, temp_busy: false, power_setup, power_busy: false }
 }
 
 /// Samples kept for the usage history graphs.
@@ -74,6 +100,7 @@ struct Shell {
     window: Option<WindowHandle<Widget>>,
     visible: bool,
     tray: Option<tray::Tray>,
+    sensors: Sensors,
     actions: UnboundedSender<Action>,
 }
 
@@ -98,7 +125,7 @@ pub fn run() {
         let settings = Settings::load();
         let stats = cx.new(|_| StatsStore { latest: None, cpu_hist: Vec::new(), gpu_hist: Vec::new() });
         let tray = tray::Tray::new(actions.clone(), checks(&settings));
-        cx.set_global(Shell { view, settings, stats: stats.clone(), window: None, visible: true, tray, actions });
+        cx.set_global(Shell { view, settings, stats: stats.clone(), window: None, visible: true, tray, sensors: sensors_now(), actions });
         open_window(cx);
 
         cx.spawn(async move |cx| {
@@ -176,7 +203,10 @@ fn handle(action: Action, cx: &mut App) {
             {
                 use monitor::cpu_sensor;
                 // The UAC prompt and schtasks take a while: off the UI thread.
-                let tx = cx.global::<Shell>().actions.clone();
+                let shell = cx.global_mut::<Shell>();
+                let tx = shell.actions.clone();
+                shell.sensors.temp_busy = true;
+                notify_window(cx);
                 std::thread::spawn(move || {
                     if cpu_sensor::pawnio_installed() {
                         cpu_sensor::request_toggle(!cpu_sensor::enabled());
@@ -185,7 +215,35 @@ fn handle(action: Action, cx: &mut App) {
                 });
             }
         }
-        Action::CpuTempChanged => refresh_tray(cx),
+        Action::CpuTempChanged => {
+            let shell = cx.global_mut::<Shell>();
+            shell.sensors.temp_busy = false;
+            shell.sensors.temp_setup = sensors_now().temp_setup;
+            refresh_tray(cx);
+            notify_window(cx);
+        }
+        Action::EnablePower => {
+            #[cfg(target_os = "linux")]
+            {
+                let shell = cx.global_mut::<Shell>();
+                if shell.sensors.power_busy {
+                    return;
+                }
+                shell.sensors.power_busy = true;
+                let tx = shell.actions.clone();
+                notify_window(cx);
+                std::thread::spawn(move || {
+                    monitor::enable_power();
+                    let _ = tx.unbounded_send(Action::PowerChanged);
+                });
+            }
+        }
+        Action::PowerChanged => {
+            let shell = cx.global_mut::<Shell>();
+            shell.sensors.power_busy = false;
+            shell.sensors.power_setup = sensors_now().power_setup;
+            notify_window(cx);
+        }
         Action::Quit => {
             save_position(cx);
             cx.quit();
@@ -263,6 +321,13 @@ fn set_visible(cx: &mut App, visible: bool) {
 // Called by the views. They run inside a window update, so anything that
 // touches the window again goes through the action channel.
 
+/// Redraws the widget (state it reads from the shell changed).
+fn notify_window(cx: &mut App) {
+    if let Some(handle) = cx.global::<Shell>().window {
+        let _ = handle.update(cx, |_, _, cx| cx.notify());
+    }
+}
+
 fn send(action: Action, cx: &App) {
     let _ = cx.global::<Shell>().actions.unbounded_send(action);
 }
@@ -301,4 +366,38 @@ pub fn set_view(expanded: bool, panel: Panel, cx: &App) {
     let mut view = cx.global::<Shell>().view.lock().unwrap();
     view.expanded = expanded;
     view.panel = panel;
+}
+
+pub fn sensors(cx: &App) -> Sensors {
+    cx.global::<Shell>().sensors
+}
+
+/// The CPU temperature button: turns it on (UAC prompt), or opens the
+/// PawnIO website when the driver it needs is missing.
+pub fn enable_cpu_temp(cx: &App) {
+    match sensors(cx).temp_setup {
+        Some(true) => send(Action::ToggleCpuTemp, cx),
+        Some(false) => open_url("https://pawnio.eu/"),
+        None => {}
+    }
+}
+
+pub fn enable_power(cx: &App) {
+    send(Action::EnablePower, cx);
+}
+
+fn open_url(url: &str) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(target_os = "linux")]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }

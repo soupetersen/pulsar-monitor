@@ -37,6 +37,7 @@ impl AssetSource for Assets {
 
 /// Icon paths for `svg().path(..)`.
 pub mod icon {
+    pub const BOLT: &str = "ui/bolt.svg";
     pub const CHEVRON: &str = "ui/chevron.svg";
     pub const COLLAPSE: &str = "ui/collapse.svg";
     pub const EXPAND: &str = "ui/expand.svg";
@@ -44,4 +45,5 @@ pub mod icon {
     pub const MOON: &str = "ui/moon.svg";
     pub const PIN: &str = "ui/pin.svg";
     pub const SUN: &str = "ui/sun.svg";
+    pub const THERMOMETER: &str = "ui/thermometer.svg";
 }

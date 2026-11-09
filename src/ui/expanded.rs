@@ -5,8 +5,9 @@ use gpui::{Context, Div, FontWeight, MouseButton, SharedString, Stateful, Transf
 
 use super::assets::icon;
 use super::format::{GB, bytes, f1, f2, pct, rate, short_cpu_name, uptime};
+use super::compact::temp_btn;
 use super::i18n::t;
-use super::parts::{alpha, icon_btn, sparkline};
+use super::parts::{alpha, icon_btn, setup_btn, sparkline};
 use super::ring::dial;
 use super::theme::{Mode, Theme, u};
 use super::Widget;
@@ -59,6 +60,11 @@ fn stat(label: impl Into<SharedString>, value: String, theme: Theme) -> Div {
         .gap(u(2.))
         .child(small(label, theme))
         .child(div().text_size(u(13.)).font_weight(FontWeight::SEMIBOLD).whitespace_nowrap().child(value))
+}
+
+/// A label over an element (a setup chip).
+fn stat_with(label: &'static str, el: impl IntoElement, theme: Theme) -> Div {
+    div().flex_1().min_w_0().flex().flex_col().items_start().gap(u(2.)).child(small(label, theme)).child(el)
 }
 
 fn stats_grid(items: Vec<Div>) -> Div {
@@ -263,6 +269,7 @@ pub fn render(
         );
     };
     let panel = w.panel;
+    let sensors = crate::shell::sensors(cx);
 
     // CPU
     let c = &s.cpu;
@@ -279,8 +286,20 @@ pub fn render(
             })))
         })
         .child(stats_grid(vec![
-            stat(t().temp, or_dash(c.temp_c.map(|t| format!("{}°C", t.round()))), theme),
-            stat(t().power, or_dash(c.power_w.map(|w| format!("{} W", w.round()))), theme),
+            match (c.temp_c, sensors.temp_setup) {
+                (None, Some(pawnio)) => stat_with(t().temp, temp_btn(pawnio, sensors.temp_busy, true, theme, cx), theme),
+                (temp, _) => stat(t().temp, or_dash(temp.map(|v| format!("{}°C", v.round()))), theme),
+            },
+            match (c.power_w, sensors.power_setup) {
+                (None, true) => {
+                    let busy = sensors.power_busy;
+                    let tip = if busy { t().cpu_power_enabling } else { t().cpu_power_off };
+                    let chip = setup_btn("power-setup", icon::BOLT, tip, busy, true, theme)
+                        .when(!busy, |d| d.on_click(cx.listener(|_, _, _, cx| crate::shell::enable_power(cx))));
+                    stat_with(t().power, chip, theme)
+                }
+                (power, _) => stat(t().power, or_dash(power.map(|v| format!("{} W", v.round()))), theme),
+            },
             stat("Clock", or_dash(c.clock_ghz.filter(|g| *g > 0.0).map(|g| format!("{} GHz", f2(g as f64)))), theme),
             stat("Threads", c.threads.to_string(), theme),
         ]))

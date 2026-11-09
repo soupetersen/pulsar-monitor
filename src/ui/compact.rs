@@ -1,15 +1,16 @@
 //! The compact view: the host name, the header buttons and one ring per
 //! resource. Clicking a ring opens the expanded view on its processes.
 
-use gpui::{Context, Div, MouseButton, div, prelude::*};
+use gpui::{Context, Div, MouseButton, Stateful, div, prelude::*};
 
 use super::assets::icon;
 use super::format::{GB, f1};
-use super::parts::icon_btn;
+use super::parts::{icon_btn, setup_btn};
 use super::ring::ring;
 use super::theme::{Theme, u};
 use super::{Widget, i18n::t};
 use crate::monitor::{Panel, Stats};
+use crate::shell;
 
 struct RingData {
     panel: Panel,
@@ -47,6 +48,26 @@ fn rings(stats: &Stats) -> Vec<RingData> {
     list
 }
 
+/// The CPU temperature setup button, while it can be turned on.
+fn temp_setup(theme: Theme, cx: &mut Context<Widget>) -> Option<Stateful<Div>> {
+    let sensors = shell::sensors(cx);
+    let pawnio = sensors.temp_setup?;
+    Some(temp_btn(pawnio, sensors.temp_busy, false, theme, cx))
+}
+
+pub fn temp_btn(pawnio: bool, busy: bool, label: bool, theme: Theme, cx: &mut Context<Widget>) -> Stateful<Div> {
+    let tip = if busy {
+        t().cpu_temp_enabling
+    } else if pawnio {
+        t().cpu_temp_off
+    } else {
+        t().cpu_temp_needs_pawnio
+    };
+    let id = if label { "temp-setup-chip" } else { "temp-setup" };
+    setup_btn(id, icon::THERMOMETER, tip, busy, label, theme)
+        .when(!busy, |d| d.on_click(cx.listener(|_, _, _, cx| shell::enable_cpu_temp(cx))))
+}
+
 pub fn render(stats: Option<&Stats>, theme: Theme, cx: &mut Context<Widget>) -> Div {
     let host = stats.map(|s| s.host.clone()).unwrap_or_else(|| "…".into());
 
@@ -73,6 +94,7 @@ pub fn render(stats: Option<&Stats>, theme: Theme, cx: &mut Context<Widget>) -> 
             div()
                 .flex()
                 .gap(u(2.))
+                .children(temp_setup(theme, cx))
                 .child(
                     icon_btn("expand", icon::EXPAND, 14., t().expand, theme, false)
                         .on_click(cx.listener(|this, _, _, cx| this.expand(None, cx))),
