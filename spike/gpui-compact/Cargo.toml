@@ -1,0 +1,26 @@
+[package]
+name = "pulsar-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Phase 0 spike for the native UI (issue #6): compact view + tray in gpui,
+# to measure memory and CPU against the WebView UI. Throwaway code.
+
+[dependencies]
+gpui = "=0.2.2"
+sysinfo = "0.40"
+nvml-wrapper = "0.13"
+raw-window-handle = "0.6"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tray-icon = "0.25"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+lto = "thin"
+opt-level = 3
+panic = "abort"
+strip = true
