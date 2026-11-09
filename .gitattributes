@@ -1,0 +1,7 @@
+# Scripts and files read on Linux and macOS keep LF line endings, also when
+# checked out on Windows (CI packaging runs bash there too).
+*.sh text eol=lf
+*.spec text eol=lf
+*.desktop text eol=lf
+*.plist text eol=lf
+*.nsi text eol=lf

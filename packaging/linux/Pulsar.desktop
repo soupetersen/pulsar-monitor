@@ -1,0 +1,9 @@
+[Desktop Entry]
+Categories=System;Monitor;
+Comment=Lightweight system monitor desktop widget (CPU, GPU, RAM)
+Exec=pulsar
+StartupWMClass=com.petersen.pulsar
+Icon=pulsar
+Name=Pulsar
+Terminal=false
+Type=Application

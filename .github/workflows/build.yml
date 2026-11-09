@@ -1,8 +1,10 @@
 name: Build
 
+# Builds, tests and packages Pulsar on all three systems (unsigned packages,
+# for a look before releasing).
 on:
   push:
-    branches: [main]
+    branches: [main, native-ui]
   pull_request:
   workflow_dispatch:
 
@@ -13,46 +15,41 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows
-            os: windows-latest
-          - name: Linux
-            os: ubuntu-22.04
-          - name: macOS
-            os: macos-latest
+          - { name: Windows, os: windows-latest, exe: pulsar.exe }
+          - { name: Linux, os: ubuntu-22.04, exe: pulsar }
+          - { name: macOS, os: macos-latest, exe: pulsar }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src/core
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev libfontconfig-dev libfreetype-dev rpm
 
-      - run: npm ci
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          command -v makensis || choco install nsis -y --no-progress
+          echo "C:/Program Files (x86)/NSIS" >> "$GITHUB_PATH"
 
-      - run: npm run check
+      - run: cargo test --release
 
-      - run: npm run tauri build
+      - run: cargo build --release
+
+      - name: Package
+        shell: bash
+        run: packaging/package.sh target/release/${{ matrix.exe }} dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: pulsar-${{ runner.os }}
-          path: |
-            src/core/target/release/bundle/nsis/*.exe
-            src/core/target/release/bundle/deb/*.deb
-            src/core/target/release/bundle/rpm/*.rpm
-            src/core/target/release/bundle/appimage/*.AppImage
-            src/core/target/release/bundle/dmg/*.dmg
+          path: dist/*
           if-no-files-found: error

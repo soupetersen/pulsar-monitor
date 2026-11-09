@@ -1,6 +1,6 @@
 name: Release
 
-# Started by `npm run release` (or by hand from the Actions tab): builds the
+# Started by `scripts/release.sh` (or by hand from the Actions tab): builds the
 # installers of the chosen platforms for an existing version tag and attaches
 # them to a draft release. The draft is published after a quick look.
 on:
@@ -28,13 +28,12 @@ jobs:
         env:
           PLATFORMS: ${{ inputs.platforms }}
         run: |
-          # macOS builds Apple Silicon and Intel in parallel jobs instead of one
-          # universal build, which compiled both one after the other.
+          # macOS builds Apple Silicon and Intel in parallel jobs.
           all='[
-            {"key": "windows", "name": "Windows", "os": "windows-latest", "target": "", "args": "", "bundle": "src/core/target/release/bundle"},
-            {"key": "linux", "name": "Linux", "os": "ubuntu-22.04", "target": "", "args": "", "bundle": "src/core/target/release/bundle"},
-            {"key": "macos", "name": "macOS (Apple Silicon)", "os": "macos-latest", "target": "aarch64-apple-darwin", "args": "--target aarch64-apple-darwin", "bundle": "src/core/target/aarch64-apple-darwin/release/bundle"},
-            {"key": "macos", "name": "macOS (Intel)", "os": "macos-latest", "target": "x86_64-apple-darwin", "args": "--target x86_64-apple-darwin", "bundle": "src/core/target/x86_64-apple-darwin/release/bundle"}
+            {"key": "windows", "name": "Windows", "os": "windows-latest", "target": "", "exe": "target/release/pulsar.exe"},
+            {"key": "linux", "name": "Linux", "os": "ubuntu-22.04", "target": "", "exe": "target/release/pulsar"},
+            {"key": "macos", "name": "macOS (Apple Silicon)", "os": "macos-latest", "target": "aarch64-apple-darwin", "exe": "target/aarch64-apple-darwin/release/pulsar"},
+            {"key": "macos", "name": "macOS (Intel)", "os": "macos-latest", "target": "x86_64-apple-darwin", "exe": "target/x86_64-apple-darwin/release/pulsar"}
           ]'
           matrix=$(jq -c --arg p "$PLATFORMS" '[.[] | select(.key as $k | $p | gsub(" "; "") | split(",") | index($k))]' <<< "$all")
           if [ "$matrix" = "[]" ]; then echo "No known platform in '$PLATFORMS'"; exit 1; fi
@@ -52,62 +51,52 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src/core
           key: ${{ matrix.target }}
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev             libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev libfontconfig-dev libfreetype-dev rpm
 
-      - run: npm ci
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          command -v makensis || choco install nsis -y --no-progress
+          echo "C:/Program Files (x86)/NSIS" >> "$GITHUB_PATH"
 
-      # Also builds the signed update packages (.sig next to each installer,
-      # plus the .app.tar.gz on macOS) that the in-app updater downloads.
       - name: Build
+        shell: bash
+        run: cargo build --release ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+
+      - name: Package
+        shell: bash
+        run: packaging/package.sh ${{ matrix.exe }} dist
+
+      # The update packages get a minisign signature (.sig next to each) with
+      # the key of the Tauri versions, which the updaters of both check.
+      - name: Sign the update packages
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build -- ${{ matrix.args }} --config '{"bundle":{"createUpdaterArtifacts":true}}'
-
-      # Both Mac builds produce "Pulsar.app.tar.gz"; name them by architecture.
-      - name: Name the macOS update package
-        if: runner.os == 'macOS'
-        shell: bash
         run: |
-          cd "${{ matrix.bundle }}/macos"
-          arch="${{ matrix.target }}"; arch="${arch%%-*}"
-          mv Pulsar.app.tar.gz "Pulsar_${arch}.app.tar.gz"
-          mv Pulsar.app.tar.gz.sig "Pulsar_${arch}.app.tar.gz.sig"
+          for f in dist/*-setup.exe dist/*.app.tar.gz dist/*.AppImage dist/*.deb dist/*.rpm; do
+            [ -f "$f" ] && npx --yes @tauri-apps/cli@2.12.4 signer sign "$f"
+          done
+          ls -l dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: pulsar-${{ matrix.key }}${{ matrix.target && format('-{0}', matrix.target) || '' }}
-          path: |
-            ${{ matrix.bundle }}/nsis/*.exe
-            ${{ matrix.bundle }}/nsis/*.exe.sig
-            ${{ matrix.bundle }}/deb/*.deb
-            ${{ matrix.bundle }}/deb/*.deb.sig
-            ${{ matrix.bundle }}/rpm/*.rpm
-            ${{ matrix.bundle }}/rpm/*.rpm.sig
-            ${{ matrix.bundle }}/appimage/*.AppImage
-            ${{ matrix.bundle }}/appimage/*.AppImage.sig
-            ${{ matrix.bundle }}/dmg/*.dmg
-            ${{ matrix.bundle }}/macos/*.app.tar.gz
-            ${{ matrix.bundle }}/macos/*.app.tar.gz.sig
+          path: dist/*
           if-no-files-found: error
 
   release:
@@ -144,7 +133,7 @@ jobs:
             '{version: $v, notes: "", pub_date: $d, platforms: $p}' > dist/latest.json
           cat dist/latest.json
 
-          # Artifacts keep their bundle folders (nsis/, deb/, ...); signatures live in latest.json.
+          # Signatures live in latest.json.
           mapfile -t files < <(find dist -type f ! -name '*.sig')
           printf '%s\n' "${files[@]}"
           if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
