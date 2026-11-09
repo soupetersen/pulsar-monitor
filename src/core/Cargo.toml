@@ -26,6 +26,7 @@ nvml-wrapper = "0.13.0"
 tauri-plugin-autostart = "2.7.0"
 tauri-plugin-window-state = "2.5.0"
 sys-locale = "0.3.2"
+tauri-plugin-single-instance = "2.5.5"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Performance", "Win32_Foundation", "Win32_System_Memory", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_System_Com", "Wdk_Graphics_Direct3D"] }

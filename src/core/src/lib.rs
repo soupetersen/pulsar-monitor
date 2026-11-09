@@ -261,6 +261,8 @@ pub fn run() {
     let view: SharedView = Arc::new(Mutex::new(View { visible: true, expanded: false, panel: Panel::None }));
 
     tauri::Builder::default()
+        // Must be the first plugin: opening Pulsar again just shows the running widget.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| set_visible(app, true)))
         .plugin(tauri_plugin_window_state::Builder::new().with_state_flags(StateFlags::POSITION).build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .manage(view.clone())
