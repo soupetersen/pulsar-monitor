@@ -46,8 +46,9 @@ io-kit-sys = "0.5"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
-codegen-units = 1
-lto = true
+# Thin LTO with parallel codegen: about the same size and speed for this app,
+# and several times faster to build than fat LTO with one codegen unit.
+lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = true

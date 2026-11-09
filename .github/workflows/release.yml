@@ -28,10 +28,13 @@ jobs:
         env:
           PLATFORMS: ${{ inputs.platforms }}
         run: |
+          # macOS builds Apple Silicon and Intel in parallel jobs instead of one
+          # universal build, which compiled both one after the other.
           all='[
-            {"key": "windows", "name": "Windows", "os": "windows-latest", "args": "", "bundle": "src/core/target/release/bundle"},
-            {"key": "linux", "name": "Linux", "os": "ubuntu-22.04", "args": "", "bundle": "src/core/target/release/bundle"},
-            {"key": "macos", "name": "macOS", "os": "macos-latest", "args": "--target universal-apple-darwin", "bundle": "src/core/target/universal-apple-darwin/release/bundle"}
+            {"key": "windows", "name": "Windows", "os": "windows-latest", "target": "", "args": "", "bundle": "src/core/target/release/bundle"},
+            {"key": "linux", "name": "Linux", "os": "ubuntu-22.04", "target": "", "args": "", "bundle": "src/core/target/release/bundle"},
+            {"key": "macos", "name": "macOS (Apple Silicon)", "os": "macos-latest", "target": "aarch64-apple-darwin", "args": "--target aarch64-apple-darwin", "bundle": "src/core/target/aarch64-apple-darwin/release/bundle"},
+            {"key": "macos", "name": "macOS (Intel)", "os": "macos-latest", "target": "x86_64-apple-darwin", "args": "--target x86_64-apple-darwin", "bundle": "src/core/target/x86_64-apple-darwin/release/bundle"}
           ]'
           matrix=$(jq -c --arg p "$PLATFORMS" '[.[] | select(.key as $k | $p | gsub(" "; "") | split(",") | index($k))]' <<< "$all")
           if [ "$matrix" = "[]" ]; then echo "No known platform in '$PLATFORMS'"; exit 1; fi
@@ -56,12 +59,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          # One dmg for Apple Silicon and Intel Macs.
-          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src/core
+          key: ${{ matrix.target }}
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -80,9 +83,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build -- ${{ matrix.args }} --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
+      # Both Mac builds produce "Pulsar.app.tar.gz"; name them by architecture.
+      - name: Name the macOS update package
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cd "${{ matrix.bundle }}/macos"
+          arch="${{ matrix.target }}"; arch="${arch%%-*}"
+          mv Pulsar.app.tar.gz "Pulsar_${arch}.app.tar.gz"
+          mv Pulsar.app.tar.gz.sig "Pulsar_${arch}.app.tar.gz.sig"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: pulsar-${{ matrix.key }}
+          name: pulsar-${{ matrix.key }}${{ matrix.target && format('-{0}', matrix.target) || '' }}
           path: |
             ${{ matrix.bundle }}/nsis/*.exe
             ${{ matrix.bundle }}/nsis/*.exe.sig
@@ -124,8 +137,9 @@ jobs:
           linux=$(find dist -name '*.AppImage' | head -1)
           deb=$(find dist -name '*.deb' | head -1)
           rpm=$(find dist -name '*.rpm' | head -1)
-          mac=$(find dist -name '*.app.tar.gz' | head -1)
-          platforms=$({ entry windows-x86_64 "$windows"; entry linux-x86_64 "$linux"; entry linux-x86_64-deb "$deb"; entry linux-x86_64-rpm "$rpm"; entry darwin-aarch64 "$mac"; entry darwin-x86_64 "$mac"; } | jq -s 'add // {}')
+          mac_arm=$(find dist -name '*aarch64.app.tar.gz' | head -1)
+          mac_intel=$(find dist -name '*x86_64.app.tar.gz' | head -1)
+          platforms=$({ entry windows-x86_64 "$windows"; entry linux-x86_64 "$linux"; entry linux-x86_64-deb "$deb"; entry linux-x86_64-rpm "$rpm"; entry darwin-aarch64 "$mac_arm"; entry darwin-x86_64 "$mac_intel"; } | jq -s 'add // {}')
           jq -n --arg v "${TAG#v}" --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson p "$platforms" \
             '{version: $v, notes: "", pub_date: $d, platforms: $p}' > dist/latest.json
           cat dist/latest.json
