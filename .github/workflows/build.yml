@@ -52,6 +52,7 @@ jobs:
           path: |
             src/core/target/release/bundle/nsis/*.exe
             src/core/target/release/bundle/deb/*.deb
+            src/core/target/release/bundle/rpm/*.rpm
             src/core/target/release/bundle/appimage/*.AppImage
             src/core/target/release/bundle/dmg/*.dmg
           if-no-files-found: error

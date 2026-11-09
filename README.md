@@ -39,7 +39,7 @@ Windows is the main target and is tested on real hardware. Linux and macOS build
 Download the file for your system from the [Releases](../../releases) page, or the latest build from the [Actions](../../actions) tab:
 
 - **Windows:** `Pulsar_x.y.z_x64-setup.exe`. Installs for the current user, so no admin rights are needed. Requires the WebView2 runtime, which ships with Windows 11.
-- **Linux:** `.deb` (Debian, Ubuntu) or `.AppImage` (any distribution). The tray icon needs `libayatana-appindicator`.
+- **Linux:** `.deb` (Debian, Ubuntu), `.rpm` (Fedora, openSUSE) or `.AppImage` (any distribution). The `.deb` and `.rpm` open in the system's software installer with a double click. On GNOME without the AppIndicator extension (Fedora's default), the tray icon doesn't show; the widget still works, and opening Pulsar again brings it back after it's hidden.
 - **macOS:** `.dmg`. The app isn't signed yet, so the first time open it with right click › Open.
 
 ### CPU temperature on Windows (AMD Ryzen, Intel Core)

@@ -87,6 +87,9 @@ jobs:
             ${{ matrix.bundle }}/nsis/*.exe
             ${{ matrix.bundle }}/nsis/*.exe.sig
             ${{ matrix.bundle }}/deb/*.deb
+            ${{ matrix.bundle }}/deb/*.deb.sig
+            ${{ matrix.bundle }}/rpm/*.rpm
+            ${{ matrix.bundle }}/rpm/*.rpm.sig
             ${{ matrix.bundle }}/appimage/*.AppImage
             ${{ matrix.bundle }}/appimage/*.AppImage.sig
             ${{ matrix.bundle }}/dmg/*.dmg
@@ -111,6 +114,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           # latest.json: what the in-app updater reads from the latest published release.
+          # Linux installs look for linux-x86_64-deb / -rpm first and fall back to the AppImage.
           base="https://github.com/$REPO/releases/download/$TAG"
           entry() { # <platform key> <file>
             [ -n "$2" ] && [ -f "$2.sig" ] || return 0
@@ -118,8 +122,10 @@ jobs:
           }
           windows=$(find dist -name '*-setup.exe' | head -1)
           linux=$(find dist -name '*.AppImage' | head -1)
+          deb=$(find dist -name '*.deb' | head -1)
+          rpm=$(find dist -name '*.rpm' | head -1)
           mac=$(find dist -name '*.app.tar.gz' | head -1)
-          platforms=$({ entry windows-x86_64 "$windows"; entry linux-x86_64 "$linux"; entry darwin-aarch64 "$mac"; entry darwin-x86_64 "$mac"; } | jq -s 'add // {}')
+          platforms=$({ entry windows-x86_64 "$windows"; entry linux-x86_64 "$linux"; entry linux-x86_64-deb "$deb"; entry linux-x86_64-rpm "$rpm"; entry darwin-aarch64 "$mac"; entry darwin-x86_64 "$mac"; } | jq -s 'add // {}')
           jq -n --arg v "${TAG#v}" --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson p "$platforms" \
             '{version: $v, notes: "", pub_date: $d, platforms: $p}' > dist/latest.json
           cat dist/latest.json
