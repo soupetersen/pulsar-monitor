@@ -41,7 +41,8 @@ pub fn dial(size: f32, value: Option<f32>, theme: Theme) -> impl IntoElement {
     .size(u(size))
 }
 
-pub fn ring(index: usize, value: Option<f32>, label: String, theme: Theme) -> Stateful<Div> {
+/// `value` is the number shown and `arc` the (animated) arc, both 0–100.
+pub fn ring(index: usize, value: Option<(f32, f32)>, label: String, theme: Theme) -> Stateful<Div> {
     div()
         .id(("ring", index))
         .flex_1()
@@ -55,7 +56,7 @@ pub fn ring(index: usize, value: Option<f32>, label: String, theme: Theme) -> St
         .rounded(u(10.))
         .when(value.is_some(), |d| d.hover(move |s| s.bg(theme.hover)))
         .child(
-            div().relative().size(u(52.)).child(dial(52., value, theme)).children(value.map(|v| {
+            div().relative().size(u(52.)).child(dial(52., value.map(|v| v.1), theme)).children(value.map(|(v, _)| {
                 div()
                     .absolute()
                     .inset_0()

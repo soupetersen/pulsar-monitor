@@ -10,8 +10,8 @@ use super::i18n::t;
 use super::parts::{alpha, icon_btn, setup_btn, sparkline};
 use super::ring::dial;
 use super::theme::{Mode, Theme, u};
-use super::Widget;
-use crate::monitor::{Panel, ProcStats, Stats};
+use super::{Anim, Widget};
+use crate::monitor::{Panel, ProcStats, RamStats, Stats};
 
 pub struct History<'a> {
     pub cpu: &'a [f32],
@@ -79,6 +79,10 @@ fn bar(value: f32, height: f32, theme: Theme) -> Div {
         .child(div().h_full().w(relative(value.clamp(0.0, 100.0) / 100.0)).rounded(u(height / 2.)).bg(theme.accent))
 }
 
+fn ram_used_pct(ram: &RamStats) -> f32 {
+    (ram.used as f64 / ram.total.max(1) as f64 * 100.0) as f32
+}
+
 fn or_dash(v: Option<String>) -> String {
     v.unwrap_or_else(|| "—".into())
 }
@@ -90,7 +94,7 @@ struct Row {
     w: f32,
 }
 
-fn rows(stats: &Stats, kind: Panel) -> Option<Vec<Row>> {
+fn rows_for(stats: &Stats, kind: Panel) -> Option<Vec<Row>> {
     if stats.procs_for != Some(kind) {
         return None;
     }
@@ -166,7 +170,7 @@ fn proc_list(rows: Option<Vec<Row>>, theme: Theme) -> Div {
 }
 
 /// The "Show … processes" button and, when open, the list.
-fn procs(stats: &Stats, kind: Panel, open: Panel, theme: Theme, cx: &mut Context<Widget>) -> [Option<Div>; 2] {
+fn procs(stats: &Stats, anim: Anim, kind: Panel, open: Panel, theme: Theme, cx: &mut Context<Widget>) -> [Option<Div>; 2] {
     let is_open = open == kind;
     let id = match kind {
         Panel::Cpu => "procs-cpu",
@@ -194,7 +198,15 @@ fn procs(stats: &Stats, kind: Panel, open: Panel, theme: Theme, cx: &mut Context
                 .when(is_open, |s| s.with_transformation(Transformation::rotate(radians(std::f32::consts::PI)))),
         )
         .on_click(cx.listener(move |this, _, _, cx| this.toggle_panel(kind, cx)));
-    [Some(div().child(toggle)), is_open.then(|| proc_list(rows(stats, kind), theme))]
+    let animated = |mut rows: Vec<Row>| {
+        // Bars of processes that were there before slide to the new width.
+        let prev = anim.prev.and_then(|p| rows_for(p, kind)).unwrap_or_default();
+        for r in &mut rows {
+            r.w = anim.mix(prev.iter().find(|p| p.name == r.name).map(|p| p.w), r.w);
+        }
+        rows
+    };
+    [Some(div().child(toggle)), is_open.then(|| proc_list(rows_for(stats, kind).map(animated), theme))]
 }
 
 fn header(w: &Widget, stats: Option<&Stats>, on_top: bool, theme: Theme, cx: &mut Context<Widget>) -> Div {
@@ -242,6 +254,7 @@ fn header(w: &Widget, stats: Option<&Stats>, on_top: bool, theme: Theme, cx: &mu
 pub fn render(
     w: &Widget,
     stats: Option<&Stats>,
+    anim: Anim,
     hist: History,
     on_top: bool,
     theme: Theme,
@@ -277,7 +290,9 @@ pub fn render(
         .child(head(format!("CPU · {}", short_cpu_name(&c.name)), None, theme))
         .child(big_row(pct(c.usage as f64)).child(sparkline(hist.cpu.to_vec(), theme)))
         .when(!c.cores.is_empty(), |d| {
-            d.child(div().flex().items_end().gap(u(3.)).h(u(26.)).children(c.cores.iter().map(|core| {
+            let prev = anim.prev.map(|p| &p.cpu.cores).filter(|p| p.len() == c.cores.len());
+            d.child(div().flex().items_end().gap(u(3.)).h(u(26.)).children(c.cores.iter().enumerate().map(|(i, core)| {
+                let core = anim.mix(prev.map(|p| p[i]), *core);
                 div()
                     .flex_1()
                     .h(relative(core.clamp(8.0, 100.0) / 100.0))
@@ -303,7 +318,7 @@ pub fn render(
             stat("Clock", or_dash(c.clock_ghz.filter(|g| *g > 0.0).map(|g| format!("{} GHz", f2(g as f64)))), theme),
             stat("Threads", c.threads.to_string(), theme),
         ]))
-        .children(procs(s, Panel::Cpu, panel, theme, cx).into_iter().flatten());
+        .children(procs(s, anim, Panel::Cpu, panel, theme, cx).into_iter().flatten());
 
     // GPU
     let gpu = s.gpu.as_ref().map(|g| {
@@ -326,12 +341,12 @@ pub fn render(
                 stat("VRAM", or_dash(vram), theme),
                 stat(t().fan, or_dash(fan), theme),
             ]))
-            .children(procs(s, Panel::Gpu, panel, theme, cx).into_iter().flatten())
+            .children(procs(s, anim, Panel::Gpu, panel, theme, cx).into_iter().flatten())
     });
 
     // Memory
     let ram = &s.ram;
-    let ram_pct = (ram.used as f64 / ram.total.max(1) as f64 * 100.0) as f32;
+    let ram_pct = ram_used_pct(ram);
     let memory = section(theme)
         .child(head(
             t().memory.into(),
@@ -345,11 +360,11 @@ pub fn render(
                     .flex()
                     .flex_col()
                     .gap(u(6.))
-                    .child(bar(ram_pct, 8., theme))
+                    .child(bar(anim.mix(anim.prev.map(|p| ram_used_pct(&p.ram)), ram_pct), 8., theme))
                     .child(small((t().available)(&f1(ram.available as f64 / GB)), theme)),
             ),
         )
-        .children(procs(s, Panel::Ram, panel, theme, cx).into_iter().flatten());
+        .children(procs(s, anim, Panel::Ram, panel, theme, cx).into_iter().flatten());
 
     // Network and disk
     let mini = |label: &'static str, value: String| {

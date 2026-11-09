@@ -8,7 +8,7 @@ use super::format::{GB, f1};
 use super::parts::{icon_btn, setup_btn};
 use super::ring::ring;
 use super::theme::{Theme, u};
-use super::{Widget, i18n::t};
+use super::{Anim, Widget, i18n::t};
 use crate::monitor::{Panel, Stats};
 use crate::shell;
 
@@ -68,7 +68,8 @@ pub fn temp_btn(pawnio: bool, busy: bool, label: bool, theme: Theme, cx: &mut Co
         .when(!busy, |d| d.on_click(cx.listener(|_, _, _, cx| shell::enable_cpu_temp(cx))))
 }
 
-pub fn render(stats: Option<&Stats>, theme: Theme, cx: &mut Context<Widget>) -> Div {
+pub fn render(stats: Option<&Stats>, anim: Anim, theme: Theme, cx: &mut Context<Widget>) -> Div {
+    let prev = anim.prev.map(rings);
     let host = stats.map(|s| s.host.clone()).unwrap_or_else(|| "…".into());
 
     let header = div()
@@ -111,7 +112,8 @@ pub fn render(stats: Option<&Stats>, theme: Theme, cx: &mut Context<Widget>) -> 
             .enumerate()
             .map(|(i, r)| {
                 let panel = r.panel;
-                ring(i, Some(r.value), r.label, theme)
+                let arc = anim.mix(prev.as_ref().and_then(|p| p.get(i)).map(|p| p.value), r.value);
+                ring(i, Some((r.value, arc)), r.label, theme)
                     .on_click(cx.listener(move |this, _, _, cx| this.expand(Some(panel), cx)))
             })
             .collect::<Vec<_>>(),

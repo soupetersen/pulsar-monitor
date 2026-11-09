@@ -13,6 +13,7 @@ mod tray;
 mod window;
 
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
@@ -71,10 +72,19 @@ fn sensors_now() -> Sensors {
 /// Samples kept for the usage history graphs.
 const HISTORY: usize = 30;
 
+/// Value changes animate in a few discrete frames, like the WebView UI
+/// (`steps(8)` over 0.4 s): it reads as motion while redrawing only 8 times
+/// per sample.
+const ANIM_STEPS: u32 = 8;
+const ANIM_STEP: Duration = Duration::from_millis(50);
+
 /// The latest sample and the CPU and GPU usage history. Views observe it
 /// and redraw when it changes.
 pub struct StatsStore {
     pub latest: Option<Stats>,
+    /// The sample before, which bars and rings animate from.
+    pub prev: Option<Stats>,
+    changed: Instant,
     pub cpu_hist: Vec<f32>,
     pub gpu_hist: Vec<f32>,
 }
@@ -89,7 +99,15 @@ impl StatsStore {
         };
         push(&mut self.cpu_hist, sample.cpu.usage);
         push(&mut self.gpu_hist, sample.gpu.as_ref().map_or(0.0, |g| g.usage));
-        self.latest = Some(sample);
+        self.prev = self.latest.replace(sample);
+        self.changed = Instant::now();
+    }
+
+    /// How far the animation from `prev` to `latest` is, from 0 to 1, in
+    /// `ANIM_STEPS` steps.
+    pub fn progress(&self) -> f32 {
+        let t = self.changed.elapsed().as_secs_f32() / (ANIM_STEP.as_secs_f32() * ANIM_STEPS as f32);
+        (t.min(1.0) * ANIM_STEPS as f32).floor() / ANIM_STEPS as f32
     }
 }
 
@@ -123,7 +141,7 @@ pub fn run() {
 
     Application::new().with_assets(crate::ui::Assets).run(move |cx: &mut App| {
         let settings = Settings::load();
-        let stats = cx.new(|_| StatsStore { latest: None, cpu_hist: Vec::new(), gpu_hist: Vec::new() });
+        let stats = cx.new(|_| StatsStore { latest: None, prev: None, changed: Instant::now(), cpu_hist: Vec::new(), gpu_hist: Vec::new() });
         let tray = tray::Tray::new(actions.clone(), checks(&settings));
         cx.set_global(Shell { view, settings, stats: stats.clone(), window: None, visible: true, tray, sensors: sensors_now(), actions });
         open_window(cx);
@@ -134,6 +152,10 @@ pub fn run() {
                     store.push(sample);
                     cx.notify();
                 });
+                for _ in 0..ANIM_STEPS {
+                    cx.background_executor().timer(ANIM_STEP).await;
+                    let _ = stats.update(cx, |_, cx| cx.notify());
+                }
             }
         })
         .detach();
@@ -258,7 +280,8 @@ fn open_window(cx: &mut App) {
     let stats = shell.stats.clone();
     // The widget resizes the window to its content on the first frame.
     let win_size = size(u(372.), u(128.));
-    let bounds = match shell.settings.position {
+    let position = shell.settings.position;
+    let bounds = match position.filter(|_| !window::NATIVE_POSITION) {
         Some((x, y)) => Bounds { origin: point(gpui::px(x), gpui::px(y)), size: win_size },
         None => Bounds::centered(None, win_size, cx),
     };
@@ -271,13 +294,20 @@ fn open_window(cx: &mut App) {
         is_resizable: false,
         is_minimizable: false,
         focus: true,
-        show: true,
+        // Windows: shown once it is in its saved place (below).
+        show: !window::NATIVE_POSITION,
         app_id: Some(APP_ID.into()),
         ..Default::default()
     };
     let handle = cx
         .open_window(options, |window, cx| {
             window::apply_native_style(window, on_top, mode == Mode::Dark);
+            if window::NATIVE_POSITION {
+                if let Some(position) = position {
+                    window::set_position(window, position);
+                }
+                window::show(window);
+            }
             cx.new(|cx| Widget::new(stats, mode, cx))
         })
         .expect("failed to open the window");
@@ -288,9 +318,9 @@ fn save_position(cx: &mut App) {
     let Some(handle) = cx.global::<Shell>().window else { return };
     // Wayland doesn't tell apps where their window is.
     if window::position_is_known() {
-        if let Ok(origin) = handle.update(cx, |_, window, _| window.bounds().origin) {
+        if let Ok(Some(position)) = handle.update(cx, |_, window, _| window::position(window)) {
             let shell = cx.global_mut::<Shell>();
-            shell.settings.position = Some((f32::from(origin.x), f32::from(origin.y)));
+            shell.settings.position = Some(position);
             shell.settings.save();
         }
     }

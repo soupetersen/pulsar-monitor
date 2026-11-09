@@ -14,8 +14,9 @@ use crate::ui::theme::Mode;
 pub struct Settings {
     pub theme: Mode,
     pub on_top: bool,
-    /// Top-left corner of the window in logical pixels, where the OS lets
-    /// apps know it (not on Wayland).
+    /// Top-left corner of the window, where the OS lets apps know it (not
+    /// on Wayland): in physical screen pixels on Windows (monitors can have
+    /// different scales), in gpui's logical pixels elsewhere.
     pub position: Option<(f32, f32)>,
 }
 

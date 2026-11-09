@@ -16,7 +16,7 @@ mod sampler;
 
 #[cfg(target_os = "linux")]
 pub use platform::{enable_power, power_setup_needed};
-pub use sampler::{Panel, ProcStats, SharedView, Stats, View, spawn};
+pub use sampler::{Panel, ProcStats, RamStats, SharedView, Stats, View, spawn};
 
 /// `--gpu-info`: prints what each GPU reports (diagnostics).
 pub fn print_gpu_info() {

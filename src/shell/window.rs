@@ -94,6 +94,46 @@ pub fn show(window: &mut Window) {
     }
 }
 
+/// Whether the window position is saved and restored natively (Windows),
+/// in physical pixels, instead of through gpui's bounds.
+pub const NATIVE_POSITION: bool = cfg!(windows);
+
+/// The window's top-left corner, to save.
+#[cfg(windows)]
+pub fn position(window: &Window) -> Option<(f32, f32)> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
+    let hwnd = hwnd(window)?;
+    let mut rect: RECT = unsafe { std::mem::zeroed() };
+    (unsafe { GetWindowRect(hwnd, &mut rect) } != 0).then_some((rect.left as f32, rect.top as f32))
+}
+
+#[cfg(not(windows))]
+pub fn position(window: &Window) -> Option<(f32, f32)> {
+    let origin = window.bounds().origin;
+    Some((f32::from(origin.x), f32::from(origin.y)))
+}
+
+/// Moves the window to a saved position, unless no monitor is there
+/// anymore (it then stays centered).
+#[cfg(windows)]
+pub fn set_position(window: &Window, (x, y): (f32, f32)) {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONULL, MonitorFromPoint};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos};
+    let Some(hwnd) = hwnd(window) else { return };
+    let (x, y) = (x.round() as i32, y.round() as i32);
+    // A point a bit inside the window's corner must be on a screen.
+    if unsafe { MonitorFromPoint(POINT { x: x + 24, y: y + 24 }, MONITOR_DEFAULTTONULL) }.is_null() {
+        return;
+    }
+    let flags = SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+    unsafe { SetWindowPos(hwnd, std::ptr::null_mut(), x, y, 0, 0, flags) };
+}
+
+#[cfg(not(windows))]
+pub fn set_position(_window: &Window, _position: (f32, f32)) {}
+
 /// Gap kept between the window and the edges of the screen.
 const MARGIN: f32 = 12.0;
 
