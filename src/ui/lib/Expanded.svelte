@@ -1,5 +1,6 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
+  import { getVersion } from "@tauri-apps/api/app";
   import ProcList from "./ProcList.svelte";
   import Sparkline from "./Sparkline.svelte";
   import type { CpuTempStatus, Panel, Proc, ProcRow, Stats, Theme } from "./types";
@@ -46,6 +47,9 @@
     onenablepower: () => void;
     update: UpdateState | null;
   } = $props();
+
+  let version = $state("");
+  getVersion().then((v) => (version = v));
 
   const togglePanel = (p: Panel) => (panel = panel === p ? "none" : p);
 
@@ -206,6 +210,10 @@
         <b>{stats.disk ? `${pct(stats.disk.activePct)} · ${rate(stats.disk.bytesPerSec)}` : "—"}</b>
       </div>
     </div>
+
+    {#if version}
+      <footer class="muted">Pulsar {version}</footer>
+    {/if}
   {:else}
     <div class="loading" aria-busy="true">
       <svg class="spinner" aria-hidden="true" width="28" height="28" viewBox="0 0 44 44">
@@ -218,6 +226,12 @@
 </div>
 
 <style>
+  footer {
+    margin-top: -2px;
+    text-align: center;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
   .loading {
     display: flex;
     flex-direction: column;
