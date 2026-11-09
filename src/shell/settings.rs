@@ -45,10 +45,11 @@ fn file() -> Option<PathBuf> {
 
 impl Settings {
     pub fn load() -> Self {
-        file()
-            .and_then(|f| std::fs::read(f).ok())
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default()
+        let saved = file().and_then(|f| std::fs::read(f).ok());
+        match saved {
+            Some(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+            None => Self { position: tauri_position(), ..Self::default() },
+        }
     }
 
     pub fn save(&self) {
@@ -58,4 +59,22 @@ impl Settings {
             let _ = std::fs::write(file, json);
         }
     }
+}
+
+/// First run after updating from a Tauri version (up to 0.4): its window
+/// position, from tauri-plugin-window-state. That is the outer position in
+/// physical pixels, the unit used here on Windows only.
+fn tauri_position() -> Option<(f32, f32)> {
+    #[derive(Deserialize)]
+    struct State {
+        x: i32,
+        y: i32,
+    }
+    if !cfg!(windows) {
+        return None;
+    }
+    let bytes = std::fs::read(dir()?.join(".window-state.json")).ok()?;
+    let states: std::collections::HashMap<String, State> = serde_json::from_slice(&bytes).ok()?;
+    let main = states.get("main")?;
+    Some((main.x as f32, main.y as f32))
 }
