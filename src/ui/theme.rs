@@ -45,12 +45,15 @@ impl Theme {
             },
             Mode::Light => Theme {
                 text: rgb(0x111111),
-                muted: rgb(0x565b64),
+                // Darker greys and stronger fills than the WebView UI had: on
+                // a translucent card, and through HDR or video streaming,
+                // light greys washed out.
+                muted: rgb(0x454a52),
                 card: rgba(if linux { 0xf6f6f8e0 } else { 0xf6f6f8b8 }),
-                inset: rgba(0x0000000a),
-                chip: rgba(0x0000000d),
-                track: rgba(0x00000017),
-                hover: rgba(0x0000000f),
+                inset: rgba(0x00000012),
+                chip: rgba(0x00000017),
+                track: rgba(0x00000024),
+                hover: rgba(0x0000001c),
                 accent: rgb(0x111111),
                 tip: rgb(0xffffff),
             },
