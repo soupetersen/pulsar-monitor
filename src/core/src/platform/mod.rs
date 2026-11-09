@@ -12,9 +12,14 @@ mod windows;
 #[cfg(windows)]
 pub use self::windows::Platform;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use self::linux::Platform;
+
+#[cfg(not(any(windows, target_os = "linux")))]
 mod other;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 pub use self::other::Platform;
 
 /// What the UI is showing, so platforms only collect what's needed.
