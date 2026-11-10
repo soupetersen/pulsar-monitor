@@ -12,9 +12,13 @@ mod ring;
 pub mod theme;
 
 use std::cell::Cell;
+use std::ops::Range;
 use std::rc::Rc;
 
-use gpui::{Context, Entity, Pixels, Render, Size, Window, canvas, div, prelude::*, px, size};
+use gpui::{
+    Bounds, Context, Entity, EntityInputHandler, FocusHandle, KeyDownEvent, Pixels, Point, Render, ScrollStrategy, Size,
+    UTF16Selection, UniformListScrollHandle, Window, canvas, div, prelude::*, px, size,
+};
 
 pub use assets::Assets;
 use crate::monitor::{Panel, Stats};
@@ -45,6 +49,10 @@ pub struct Widget {
     /// The open process list. Kept while collapsed, so expanding again
     /// shows the same list.
     panel: Panel,
+    /// What the process lists are filtered by, and the search field's focus.
+    query: String,
+    search: FocusHandle,
+    proc_scroll: UniformListScrollHandle,
     fitted: Rc<Cell<(Size<Pixels>, f32)>>,
 }
 
@@ -52,7 +60,16 @@ impl Widget {
     pub fn new(stats: Entity<StatsStore>, mode: Mode, cx: &mut Context<Self>) -> Self {
         cx.observe(&stats, |_, _, cx| cx.notify()).detach();
         let (expanded, panel) = shell::view_state(cx);
-        Self { stats, mode, expanded, panel, fitted: Rc::default() }
+        Self {
+            stats,
+            mode,
+            expanded,
+            panel,
+            query: String::new(),
+            search: cx.focus_handle(),
+            proc_scroll: UniformListScrollHandle::new(),
+            fitted: Rc::default(),
+        }
     }
 
     fn expand(&mut self, panel: Option<Panel>, cx: &mut Context<Self>) {
@@ -70,6 +87,8 @@ impl Widget {
 
     fn toggle_panel(&mut self, panel: Panel, cx: &mut Context<Self>) {
         self.panel = if self.panel == panel { Panel::None } else { panel };
+        self.query.clear();
+        self.proc_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.sync(cx);
     }
 
@@ -83,6 +102,80 @@ impl Widget {
     fn sync(&mut self, cx: &mut Context<Self>) {
         shell::set_view(self.expanded, self.panel, cx);
         cx.notify();
+    }
+
+    /// Keys in the process search field. Typed text comes through the
+    /// input handler below, which also gets accents and IME input.
+    fn type_query(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let key = &event.keystroke;
+        let m = &key.modifiers;
+        // AltGr arrives as Ctrl+Alt on Windows and types characters.
+        let shortcut = m.platform || (m.control && !m.alt);
+        match key.key.as_str() {
+            "escape" if self.query.is_empty() => window.blur(),
+            "escape" => self.query.clear(),
+            "backspace" if shortcut => self.query.clear(),
+            "backspace" => _ = self.query.pop(),
+            "v" if shortcut => {
+                let text = cx.read_from_clipboard().and_then(|c| c.text()).unwrap_or_default();
+                return self.add_to_query(text.lines().next().unwrap_or("").trim(), cx);
+            }
+            _ => return,
+        }
+        self.query_changed(cx);
+    }
+
+    fn add_to_query(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.query.extend(text.chars().filter(|c| !c.is_control()));
+        self.query = self.query.chars().take(48).collect();
+        self.query_changed(cx);
+    }
+
+    fn query_changed(&mut self, cx: &mut Context<Self>) {
+        self.proc_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        cx.stop_propagation();
+        cx.notify();
+    }
+}
+
+/// The search field takes text at its end only: no selection, no caret
+/// moves, no text being composed.
+impl EntityInputHandler for Widget {
+    fn text_for_range(&mut self, _: Range<usize>, _: &mut Option<Range<usize>>, _: &mut Window, _: &mut Context<Self>) -> Option<String> {
+        None
+    }
+
+    fn selected_text_range(&mut self, _: bool, _: &mut Window, _: &mut Context<Self>) -> Option<UTF16Selection> {
+        let end = self.query.encode_utf16().count();
+        Some(UTF16Selection { range: end..end, reversed: false })
+    }
+
+    fn marked_text_range(&self, _: &mut Window, _: &mut Context<Self>) -> Option<Range<usize>> {
+        None
+    }
+
+    fn unmark_text(&mut self, _: &mut Window, _: &mut Context<Self>) {}
+
+    fn replace_text_in_range(&mut self, _: Option<Range<usize>>, text: &str, _: &mut Window, cx: &mut Context<Self>) {
+        self.add_to_query(text, cx);
+    }
+
+    fn replace_and_mark_text_in_range(
+        &mut self,
+        _: Option<Range<usize>>,
+        _: &str,
+        _: Option<Range<usize>>,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+    }
+
+    fn bounds_for_range(&mut self, _: Range<usize>, bounds: Bounds<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<Bounds<Pixels>> {
+        Some(bounds)
+    }
+
+    fn character_index_for_point(&mut self, _: Point<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<usize> {
+        None
     }
 }
 
@@ -107,7 +200,7 @@ fn fit_window(last: Rc<Cell<(Size<Pixels>, f32)>>) -> impl IntoElement {
 }
 
 impl Render for Widget {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::get(self.mode);
         let store = self.stats.read(cx);
         let stats = store.latest.clone();
@@ -120,7 +213,8 @@ impl Render for Widget {
         let anim = Anim { prev: prev.as_ref(), p };
         let (content, width) = if self.expanded {
             let hist = expanded::History { cpu: &cpu_hist, gpu: &gpu_hist };
-            (expanded::render(self, stats.as_ref(), anim, hist, on_top, theme, cx), 440.)
+            let searching = self.search.is_focused(window);
+            (expanded::render(self, stats.as_ref(), anim, hist, on_top, searching, theme, cx), 440.)
         } else {
             (compact::render(stats.as_ref(), anim, theme, cx), 372.)
         };

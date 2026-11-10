@@ -17,7 +17,6 @@ use crate::monitor::platform::{GpuProcs, Platform, Want};
 
 const TICK: Duration = Duration::from_secs(1);
 const FIRST_TICK: Duration = Duration::from_millis(300);
-const TOP_PROCS: usize = 8;
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -276,7 +275,7 @@ fn private_memory(_pid: u32) -> Option<u64> {
 }
 
 /// Groups processes by executable name (e.g. all chrome.exe together) and
-/// returns the top entries for the open panel.
+/// returns them all, the busiest first, for the open panel.
 fn top_processes(sys: &System, panel: Panel, ncpu: f32, gpu: Option<&GpuProcs>) -> Vec<ProcStats> {
     let mut groups: HashMap<String, ProcStats> = HashMap::new();
     for (pid, p) in sys.processes() {
@@ -305,6 +304,5 @@ fn top_processes(sys: &System, panel: Panel, ncpu: f32, gpu: Option<&GpuProcs>) 
         Panel::Ram => list.sort_by(|a, b| b.mem.cmp(&a.mem)),
         _ => list.sort_by(|a, b| b.cpu.total_cmp(&a.cpu)),
     }
-    list.truncate(TOP_PROCS);
     list
 }

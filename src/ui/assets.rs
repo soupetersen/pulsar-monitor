@@ -19,6 +19,7 @@ const ICONS: &[(&str, &[u8])] = icons!(
     "minimize",
     "moon",
     "pin",
+    "search",
     "sun",
     "thermometer",
 );
@@ -45,6 +46,7 @@ pub mod icon {
     pub const MINIMIZE: &str = "ui/minimize.svg";
     pub const MOON: &str = "ui/moon.svg";
     pub const PIN: &str = "ui/pin.svg";
+    pub const SEARCH: &str = "ui/search.svg";
     pub const SUN: &str = "ui/sun.svg";
     pub const THERMOMETER: &str = "ui/thermometer.svg";
 }

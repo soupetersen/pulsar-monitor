@@ -1,7 +1,13 @@
 //! The expanded view: a section per resource with its history and details,
 //! the process lists, network and disk, and the version.
 
-use gpui::{Context, Div, FontWeight, MouseButton, SharedString, Stateful, Transformation, WindowControlArea, div, prelude::*, radians, relative, svg};
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use gpui::{
+    Context, Div, ElementInputHandler, FontWeight, MouseButton, SharedString, Stateful, Transformation, WindowControlArea,
+    canvas, div, prelude::*, radians, relative, svg, transparent_black, uniform_list,
+};
 
 use super::assets::icon;
 use super::format::{GB, bytes, f1, f2, pct, rate, short_cpu_name, uptime};
@@ -128,50 +134,134 @@ fn rows_for(stats: &Stats, kind: Panel) -> Option<Vec<Row>> {
     )
 }
 
-fn proc_list(rows: Option<Vec<Row>>, theme: Theme) -> Div {
-    let empty = |text: &'static str| div().px(u(6.)).py(u(8.)).text_size(u(12.)).text_color(theme.muted).child(text);
-    match rows {
-        None => div().child(empty(t().loading)),
-        Some(rows) if rows.is_empty() => div().child(empty(t().no_processes)),
-        Some(rows) => div().flex().flex_col().children(rows.into_iter().enumerate().map(|(i, r)| {
+/// Height of a process row, and how many rows show before the list scrolls.
+const ROW_H: f32 = 40.;
+const MAX_ROWS: usize = 8;
+
+fn proc_row(r: &Row, theme: Theme) -> Div {
+    div()
+        .h(u(ROW_H))
+        .flex()
+        .items_center()
+        .gap(u(10.))
+        .px(u(6.))
+        .rounded(u(6.))
+        .hover(move |s| s.bg(theme.hover))
+        .child(
             div()
-                .id(("proc", i))
+                .flex_1()
+                .min_w_0()
                 .flex()
-                .items_center()
-                .gap(u(10.))
-                .px(u(6.))
-                .py(u(5.))
-                .rounded(u(6.))
-                .hover(move |s| s.bg(theme.hover))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .flex()
-                        .flex_col()
-                        .child(div().text_size(u(12.)).truncate().child(r.name))
-                        .when(!r.sub.is_empty(), |d| {
-                            d.child(div().text_size(u(11.)).text_color(theme.muted).truncate().child(r.sub))
-                        }),
-                )
-                .child(div().w(u(96.)).flex_none().child(bar(r.w, 4., theme)))
-                .child(
-                    div()
-                        .w(u(58.))
-                        .flex_none()
-                        .flex()
-                        .justify_end()
-                        .text_size(u(12.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(r.val),
-                )
-        })),
+                .flex_col()
+                .child(div().text_size(u(12.)).line_height(u(16.)).truncate().child(r.name.clone()))
+                .when(!r.sub.is_empty(), |d| {
+                    d.child(div().text_size(u(11.)).line_height(u(14.)).text_color(theme.muted).truncate().child(r.sub.clone()))
+                }),
+        )
+        .child(div().w(u(96.)).flex_none().child(bar(r.w, 4., theme)))
+        .child(
+            div()
+                .w(u(58.))
+                .flex_none()
+                .flex()
+                .justify_end()
+                .text_size(u(12.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(r.val.clone()),
+        )
+}
+
+/// The field that filters the process list by name.
+fn search_field(w: &Widget, focused: bool, theme: Theme, cx: &mut Context<Widget>) -> Stateful<Div> {
+    let text = if w.query.is_empty() && !focused {
+        div().text_color(theme.muted).child(t().search_processes)
+    } else {
+        div()
+            .flex()
+            .items_center()
+            .child(w.query.clone())
+            .when(focused, |d| d.child(div().ml(u(1.)).w(u(1.)).h(u(14.)).bg(theme.text)))
+    };
+    // Typed text reaches the widget through gpui's input handler.
+    let input = {
+        let (focus, view) = (w.search.clone(), cx.entity());
+        canvas(|_, _, _| {}, move |bounds, _, window, cx| window.handle_input(&focus, ElementInputHandler::new(bounds, view), cx))
+            .absolute()
+            .inset_0()
+    };
+    div()
+        .id("proc-search")
+        .track_focus(&w.search)
+        .h(u(30.))
+        .px(u(10.))
+        .rounded(u(8.))
+        .bg(theme.chip)
+        .border_1()
+        .border_color(if focused { alpha(theme.accent, 0.7) } else { transparent_black().into() })
+        .flex()
+        .items_center()
+        .gap(u(8.))
+        .text_size(u(12.))
+        .cursor_text()
+        .child(svg().path(icon::SEARCH).size(u(13.)).flex_none().text_color(theme.muted))
+        .child(div().flex_1().min_w_0().overflow_hidden().child(text))
+        .child(input)
+        .on_click(cx.listener(|this, _, window, cx| {
+            window.focus(&this.search);
+            cx.notify();
+        }))
+        .on_key_down(cx.listener(Widget::type_query))
+}
+
+fn proc_list(w: &Widget, rows: Option<Vec<Row>>, focused: bool, theme: Theme, cx: &mut Context<Widget>) -> Div {
+    let empty = |text: &'static str| div().px(u(6.)).py(u(8.)).text_size(u(12.)).text_color(theme.muted).child(text);
+    let Some(rows) = rows else { return div().child(empty(t().loading)) };
+    if rows.is_empty() && w.query.is_empty() {
+        return div().child(empty(t().no_processes));
     }
+    let query = w.query.to_lowercase();
+    let rows: Rc<Vec<Row>> = Rc::new(rows.into_iter().filter(|r| r.name.to_lowercase().contains(&query)).collect());
+    let list = div().flex().flex_col().gap(u(6.)).child(search_field(w, focused, theme, cx));
+    if rows.is_empty() {
+        return list.child(empty(t().no_match));
+    }
+
+    // Only the rows in view are built; the list scrolls past MAX_ROWS.
+    let n = rows.len();
+    let view_h = ROW_H * n.min(MAX_ROWS) as f32;
+    let items = uniform_list("procs", n, move |range, _, _| range.map(|i| proc_row(&rows[i], theme)).collect::<Vec<_>>())
+        .track_scroll(w.proc_scroll.clone())
+        .h(u(view_h));
+    // gpui draws no scrollbar, so a thin thumb shows where the list is.
+    let thumb = (n > MAX_ROWS).then(|| {
+        let scroll = &w.proc_scroll.0.borrow().base_handle;
+        let (offset, max) = (-f32::from(scroll.offset().y), f32::from(scroll.max_offset().height));
+        let thumb_h = (view_h * MAX_ROWS as f32 / n as f32).max(24.);
+        let top = if max > 0. { (offset / max).clamp(0., 1.) * (view_h - thumb_h) } else { 0. };
+        div().absolute().right(u(-6.)).top(u(top)).w(u(3.)).h(u(thumb_h)).rounded(u(2.)).bg(theme.track)
+    });
+    // The wheel scrolls the list only, not the window's content too.
+    list.child(
+        div()
+            .id("procs-box")
+            .relative()
+            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .child(items)
+            .children(thumb),
+    )
 }
 
 /// The "Show … processes" button and, when open, the list.
-fn procs(stats: &Stats, anim: Anim, kind: Panel, open: Panel, theme: Theme, cx: &mut Context<Widget>) -> [Option<Div>; 2] {
-    let is_open = open == kind;
+fn procs(
+    w: &Widget,
+    stats: &Stats,
+    anim: Anim,
+    kind: Panel,
+    focused: bool,
+    theme: Theme,
+    cx: &mut Context<Widget>,
+) -> [Option<Div>; 2] {
+    let is_open = w.panel == kind;
     let id = match kind {
         Panel::Cpu => "procs-cpu",
         Panel::Gpu => "procs-gpu",
@@ -200,13 +290,14 @@ fn procs(stats: &Stats, anim: Anim, kind: Panel, open: Panel, theme: Theme, cx: 
         .on_click(cx.listener(move |this, _, _, cx| this.toggle_panel(kind, cx)));
     let animated = |mut rows: Vec<Row>| {
         // Bars of processes that were there before slide to the new width.
-        let prev = anim.prev.and_then(|p| rows_for(p, kind)).unwrap_or_default();
+        let prev: HashMap<String, f32> =
+            anim.prev.and_then(|p| rows_for(p, kind)).unwrap_or_default().into_iter().map(|p| (p.name, p.w)).collect();
         for r in &mut rows {
-            r.w = anim.mix(prev.iter().find(|p| p.name == r.name).map(|p| p.w), r.w);
+            r.w = anim.mix(prev.get(&r.name).copied(), r.w);
         }
         rows
     };
-    [Some(div().child(toggle)), is_open.then(|| proc_list(rows_for(stats, kind).map(animated), theme))]
+    [Some(div().child(toggle)), is_open.then(|| proc_list(w, rows_for(stats, kind).map(animated), focused, theme, cx))]
 }
 
 fn header(w: &Widget, stats: Option<&Stats>, on_top: Option<bool>, theme: Theme, cx: &mut Context<Widget>) -> Div {
@@ -261,6 +352,7 @@ pub fn render(
     anim: Anim,
     hist: History,
     on_top: Option<bool>,
+    searching: bool,
     theme: Theme,
     cx: &mut Context<Widget>,
 ) -> Div {
@@ -285,7 +377,6 @@ pub fn render(
                 .child(div().text_size(u(12.)).text_color(theme.muted).child(t().collecting)),
         );
     };
-    let panel = w.panel;
     let sensors = crate::shell::sensors(cx);
 
     // CPU
@@ -322,7 +413,7 @@ pub fn render(
             stat("Clock", or_dash(c.clock_ghz.filter(|g| *g > 0.0).map(|g| format!("{} GHz", f2(g as f64)))), theme),
             stat("Threads", c.threads.to_string(), theme),
         ]))
-        .children(procs(s, anim, Panel::Cpu, panel, theme, cx).into_iter().flatten());
+        .children(procs(w, s, anim, Panel::Cpu, searching, theme, cx).into_iter().flatten());
 
     // GPU
     let gpu = s.gpu.as_ref().map(|g| {
@@ -345,7 +436,7 @@ pub fn render(
                 stat("VRAM", or_dash(vram), theme),
                 stat(t().fan, or_dash(fan), theme),
             ]))
-            .children(procs(s, anim, Panel::Gpu, panel, theme, cx).into_iter().flatten())
+            .children(procs(w, s, anim, Panel::Gpu, searching, theme, cx).into_iter().flatten())
     });
 
     // Memory
@@ -368,7 +459,7 @@ pub fn render(
                     .child(small((t().available)(&f1(ram.available as f64 / GB)), theme)),
             ),
         )
-        .children(procs(s, anim, Panel::Ram, panel, theme, cx).into_iter().flatten());
+        .children(procs(w, s, anim, Panel::Ram, searching, theme, cx).into_iter().flatten());
 
     // Network and disk
     let mini = |label: &'static str, value: String| {
