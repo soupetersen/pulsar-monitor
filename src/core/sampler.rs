@@ -269,6 +269,67 @@ unsafe fn libc_sysconf_pagesize() -> i64 {
     unsafe { sysconf(SC_PAGESIZE) }
 }
 
+/// Windows: each process's private working set, the memory Task Manager
+/// shows. sysinfo reports the whole working set, which also counts shared
+/// pages (DLLs, the GPU driver's mapped memory...) once per process. One
+/// system call returns it for every process.
+#[cfg(all(windows, target_pointer_width = "64"))]
+fn private_memory_all() -> HashMap<u32, u64> {
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn NtQuerySystemInformation(class: i32, buf: *mut std::ffi::c_void, len: u32, ret: *mut u32) -> i32;
+    }
+    const SYSTEM_PROCESS_INFORMATION: i32 = 5;
+    const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC000_0004_u32 as i32;
+    // SYSTEM_PROCESS_INFORMATION on 64-bit Windows.
+    const NEXT_ENTRY: usize = 0x00;
+    const WORKING_SET_PRIVATE: usize = 0x08;
+    const PROCESS_ID: usize = 0x50;
+
+    let mut buf: Vec<u64> = vec![0; 64 * 1024];
+    loop {
+        let bytes = (buf.len() * 8) as u32;
+        let mut needed = 0u32;
+        // SAFETY: the buffer is writable for `bytes` bytes.
+        let status = unsafe { NtQuerySystemInformation(SYSTEM_PROCESS_INFORMATION, buf.as_mut_ptr().cast(), bytes, &mut needed) };
+        if status == STATUS_INFO_LENGTH_MISMATCH {
+            // Processes may start in between: leave some room.
+            buf.resize((needed as usize).max(bytes as usize) / 8 * 2, 0);
+            continue;
+        }
+        if status < 0 {
+            return HashMap::new();
+        }
+        break;
+    }
+
+    // SAFETY: the u64 buffer is 8-byte aligned, and the entries Windows
+    // wrote stay within it.
+    let base = buf.as_ptr().cast::<u8>();
+    let read = |at: usize, len: usize| -> u64 {
+        let mut v = [0u8; 8];
+        unsafe { std::ptr::copy_nonoverlapping(base.add(at), v.as_mut_ptr(), len) };
+        u64::from_le_bytes(v)
+    };
+    let mut map = HashMap::new();
+    let mut at = 0;
+    loop {
+        let pid = read(at + PROCESS_ID, 8) as u32;
+        map.insert(pid, read(at + WORKING_SET_PRIVATE, 8));
+        let next = read(at + NEXT_ENTRY, 4) as usize;
+        if next == 0 || at + next + PROCESS_ID + 8 > buf.len() * 8 {
+            break;
+        }
+        at += next;
+    }
+    map
+}
+
+#[cfg(not(all(windows, target_pointer_width = "64")))]
+fn private_memory_all() -> HashMap<u32, u64> {
+    HashMap::new()
+}
+
 #[cfg(not(target_os = "linux"))]
 fn private_memory(_pid: u32) -> Option<u64> {
     None
@@ -278,6 +339,7 @@ fn private_memory(_pid: u32) -> Option<u64> {
 /// returns them all, the busiest first, for the open panel.
 fn top_processes(sys: &System, panel: Panel, ncpu: f32, gpu: Option<&GpuProcs>) -> Vec<ProcStats> {
     let mut groups: HashMap<String, ProcStats> = HashMap::new();
+    let private = private_memory_all();
     for (pid, p) in sys.processes() {
         let pid = pid.as_u32();
         // On Linux sysinfo also lists threads (Chrome's "ThreadPoolForeg"...),
@@ -289,7 +351,7 @@ fn top_processes(sys: &System, panel: Panel, ncpu: f32, gpu: Option<&GpuProcs>) 
         let g = groups.entry(name.clone()).or_insert_with(|| ProcStats { name, ..Default::default() });
         g.count += 1;
         g.cpu += p.cpu_usage() / ncpu;
-        g.mem += private_memory(pid).unwrap_or_else(|| p.memory());
+        g.mem += private.get(&pid).copied().or_else(|| private_memory(pid)).unwrap_or_else(|| p.memory());
         if let Some(gp) = gpu {
             g.gpu += gp.usage.get(&pid).copied().unwrap_or(0.0);
             g.vram += gp.vram.get(&pid).copied().unwrap_or(0);
