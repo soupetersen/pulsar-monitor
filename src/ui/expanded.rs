@@ -139,7 +139,10 @@ const ROW_H: f32 = 40.;
 const MAX_ROWS: usize = 8;
 
 fn proc_row(r: &Row, theme: Theme) -> Div {
+    // uniform_list lays each row out on its own, so without a full width a
+    // row shrinks to its text and the bars and values stop lining up.
     div()
+        .w_full()
         .h(u(ROW_H))
         .flex()
         .items_center()
